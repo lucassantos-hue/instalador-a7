@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada
+# Instalador automatico A7 Pharma - versao consolidada (COM MACRO DE TECLADO OTIMIZADA)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -75,7 +75,7 @@ function Test-InstallerFile {
 
     if (-not (Test-Path -LiteralPath $Path)) { throw "Arquivo nao encontrado: $Path" }
     $file = Get-Item -LiteralPath $Path
-    if ($file.Length -lt 50000) { throw "O arquivo parece pequeno demais ($($file.Length) bytes). Download interrompido." }
+    if ($file.Length -lt 50000) { throw "O arquivo de $DisplayName parece pequeno demais. Download interrompido." }
 
     $stream = [System.IO.File]::OpenRead($Path)
     try {
@@ -97,27 +97,56 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# NOVA FUNCAO DE INSTALACAO: ARRAY PURO (METODO ABSOLUTO)
-function Invoke-Installer {
+# -----------------------------------------------------------------------------
+# FUNCOES DE INSTALACAO (LIMPAMOS AS TENTATIVAS ANTIGAS, FICOU SÓ O QUE FUNCIONA)
+# -----------------------------------------------------------------------------
+
+# 1. Instalador Padrao (Apenas para o Notepad++)
+function Invoke-SilentInstaller {
+    param([string]$Path, [string]$Arguments, [string]$DisplayName)
+    Write-Host "=> Instalando $DisplayName silenciosamente..." -ForegroundColor Yellow
+    $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
+    Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
+}
+
+# 2. Macro de Cliques (Para os instaladores teimosos da Alpha7)
+function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string[]]$Arguments,
         [Parameter(Mandatory=$true)][string]$DisplayName
     )
-    Write-Host "=> Instalando $DisplayName em modo oculto..." -ForegroundColor Yellow
+    Write-Host "=> [MACRO] Instalando $DisplayName..." -ForegroundColor Yellow
+    Write-Host "   [!] ATENCAO: NAO MEXA NO MOUSE NEM NO TECLADO AGORA!" -ForegroundColor Red
     
     try {
-        $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
+        $process = Start-Process -FilePath $Path -PassThru
+        $wshell = New-Object -ComObject wscript.shell
         
-        if ($process.ExitCode -notin @(0, 3010, 1641)) {
-            Write-Host "[!] $DisplayName concluiu com codigo $($process.ExitCode)." -ForegroundColor Yellow
+        Start-Sleep -Seconds 3 # Dá tempo do instalador extrair e abrir a janela
+        
+        $isRunning = $true
+        $timeout = 0
+        
+        # Procura a janela e aperta ENTER a cada 1.5 segundos
+        while ($isRunning -and $timeout -lt 300) {
+            $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
+            
+            if ($activeWindow) {
+                $wshell.AppActivate($activeWindow.Id) | Out-Null
+                Start-Sleep -Milliseconds 300
+                $wshell.SendKeys('~') # Aperta a tecla ENTER
+            } 
+            else {
+                if ($process.HasExited) { $isRunning = $false }
+            }
+            Start-Sleep -Milliseconds 1500
+            $timeout++
         }
-        else {
-            Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
-        }
+        
+        Write-Host "[+] $DisplayName instalado com sucesso via Macro." -ForegroundColor Green
     }
     catch {
-        throw "Erro ao iniciar instalador: $($_.Exception.Message)"
+        throw "Erro ao iniciar instalador via Macro: $($_.Exception.Message)"
     }
 }
 
@@ -179,32 +208,18 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (A METRALHADORA DE FLAGS)
+    # 3. INSTALACAO DOS PROGRAMAS
     # -------------------------------------------------------------------------
-    # Combinamos as flags de todos os motores possiveis (Inno, NSIS, Install4j, SFX)
-    $arsenalSilencioso = @(
-        '/VERYSILENT', 
-        '/SILENT', 
-        '/SUPPRESSMSGBOXES', 
-        '/NORESTART', 
-        '/SP-', 
-        '/S', 
-        '/q', 
-        '-q'
-    )
-    
-    $argsNpp = @('/S')
-
     if ($instalarPDV) {
-        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $arsenalSilencioso -DisplayName 'A7 PDV'
-        $installationResults.Add('A7 PDV: instalado')
+        Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV'
+        $installationResults.Add('A7 PDV: instalado (Macro)')
     }
     else { $installationResults.Add('A7 PDV: pulado') }
 
-    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $arsenalSilencioso -DisplayName 'A7 Retaguarda'
-    $installationResults.Add('A7 Retaguarda: instalado')
+    Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
+    $installationResults.Add('A7 Retaguarda: instalado (Macro)')
     
-    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments $argsNpp -DisplayName 'Notepad++'
+    Invoke-SilentInstaller -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
