@@ -110,6 +110,7 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
+# Modificado para aceitar [string] pura para evitar conflito de aspas nos comandos
 function Invoke-Installer {
     param([string]$Path, [string]$Arguments, [string]$DisplayName)
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
@@ -188,7 +189,7 @@ try {
     # -------------------------------------------------------------------------
     # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO SEPARADO)
     # -------------------------------------------------------------------------
-    # Argumentos diferentes porque os instaladores sao de motores diferentes
+    # PDV = Inno Setup (/VERYSILENT). Retaguarda = Install4j (-q).
     $argsPDV = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
     $argsRetag = '-q -overwrite -nofilefailures -Dinstall4j.suppressUnattendedReboot=true'
 
