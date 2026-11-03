@@ -110,24 +110,28 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# NOVA FUNCAO DE INSTALACAO: METODO BLINDADO VIA CMD
+# NOVA FUNCAO DE INSTALACAO: METODO DE ARRAY NATIVO
+# Isto garante que os parametros /VERYSILENT sejam injetados individualmente sem falhas
 function Invoke-Installer {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string[]]$Arguments,
         [Parameter(Mandatory=$true)][string]$DisplayName
     )
     Write-Host "=> Instalando $DisplayName em modo oculto..." -ForegroundColor Yellow
     
-    # Este formato injeta os parametros no terminal bruto do Windows, fugindo do PowerShell.
-    # Colocamos as flags de todos os motores ao mesmo tempo. O programa absorve as dele e ignora o resto.
-    $cmdArgs = "/c `"`"$Path`" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /S -q`""
-    $process = Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -Wait -PassThru -WindowStyle Hidden
-    
-    if ($process.ExitCode -notin @(0, 3010, 1641)) {
-        Write-Host "[!] $DisplayName concluiu com codigo $($process.ExitCode) (geralmente pode ser ignorado se instalou)." -ForegroundColor Yellow
+    try {
+        $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -notin @(0, 3010, 1641)) {
+            Write-Host "[!] $DisplayName concluiu com codigo $($process.ExitCode)." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "[+] $DisplayName instalado com sucesso (codigo 0)." -ForegroundColor Green
+        }
     }
-    else {
-        Write-Host "[+] $DisplayName instalado (codigo 0)." -ForegroundColor Green
+    catch {
+        throw "Erro ao iniciar instalador do $DisplayName : $($_.Exception.Message)"
     }
 }
 
@@ -192,18 +196,22 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (METODO UNIVERSAL)
+    # 3. INSTALACAO DOS PROGRAMAS (ARRAY NATIVO)
     # -------------------------------------------------------------------------
+    # Injetamos os parametros como um array. É o unico modo que nunca falha.
+    $argsInno = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-')
+    $argsNpp  = @('/S')
+
     if ($instalarPDV) {
-        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV'
+        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argsInno -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
     }
     else { $installationResults.Add('A7 PDV: pulado por opcao do tecnico') }
 
-    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
+    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argsInno -DisplayName 'A7 Retaguarda'
     $installationResults.Add('A7 Retaguarda: instalado')
     
-    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
+    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments $argsNpp -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
