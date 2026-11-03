@@ -110,11 +110,15 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# Modificado para aceitar [string] pura para evitar conflito de aspas nos comandos
+# AQUI ESTA A CORRECAO FINAL: Forcamos o PowerShell a partir os argumentos por espaços
+# para entregar cada parametro isolado e garantir o modo silencioso.
 function Invoke-Installer {
     param([string]$Path, [string]$Arguments, [string]$DisplayName)
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
-    $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
+    
+    $argArray = $Arguments -split ' ' | Where-Object { $_ -ne '' }
+    $process = Start-Process -FilePath $Path -ArgumentList $argArray -Wait -PassThru
+    
     if ($process.ExitCode -notin @(0, 3010, 1641)) {
         throw "A instalacao de $DisplayName retornou codigo $($process.ExitCode)."
     }
@@ -187,19 +191,17 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO SEPARADO)
+    # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO)
     # -------------------------------------------------------------------------
-    # PDV = Inno Setup (/VERYSILENT). Retaguarda = Install4j (-q).
-    $argsPDV = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
-    $argsRetag = '-q -overwrite -nofilefailures -Dinstall4j.suppressUnattendedReboot=true'
+    $argsInno = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
 
     if ($instalarPDV) {
-        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argsPDV -DisplayName 'A7 PDV'
+        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argsInno -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
     }
     else { $installationResults.Add('A7 PDV: pulado por opcao do tecnico') }
 
-    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argsRetag -DisplayName 'A7 Retaguarda'
+    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argsInno -DisplayName 'A7 Retaguarda'
     $installationResults.Add('A7 Retaguarda: instalado')
     
     Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
