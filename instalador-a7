@@ -110,25 +110,34 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# NOVA FUNCAO DE INSTALACAO: METODO DE ARRAY NATIVO
-# Isto garante que os parametros /VERYSILENT sejam injetados individualmente sem falhas
+# -----------------------------------------------------------------------------
+# NOVA FUNCAO DE INSTALACAO: METODO INFALIVEL VIA ARQUIVO .BAT
+# Burlamos as limitacoes do PowerShell escrevendo o comando puro para o Windows
+# -----------------------------------------------------------------------------
 function Invoke-Installer {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string[]]$Arguments,
+        [Parameter(Mandatory=$true)][string]$Arguments,
         [Parameter(Mandatory=$true)][string]$DisplayName
     )
     Write-Host "=> Instalando $DisplayName em modo oculto..." -ForegroundColor Yellow
     
     try {
-        $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
+        $batPath = "$Path.bat"
+        $batContent = "@echo off`r`n`"$Path`" $Arguments"
+        [System.IO.File]::WriteAllText($batPath, $batContent, [System.Text.Encoding]::ASCII)
+        
+        $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$batPath`"" -Wait -PassThru -WindowStyle Hidden
         
         if ($process.ExitCode -notin @(0, 3010, 1641)) {
             Write-Host "[!] $DisplayName concluiu com codigo $($process.ExitCode)." -ForegroundColor Yellow
         }
         else {
-            Write-Host "[+] $DisplayName instalado com sucesso (codigo 0)." -ForegroundColor Green
+            Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
         }
+        
+        # Limpa o bat apos a instalacao
+        Remove-Item -Path $batPath -Force -ErrorAction SilentlyContinue
     }
     catch {
         throw "Erro ao iniciar instalador do $DisplayName : $($_.Exception.Message)"
@@ -196,12 +205,10 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (ARRAY NATIVO)
+    # 3. INSTALACAO DOS PROGRAMAS (COM ARQUIVOS .BAT)
     # -------------------------------------------------------------------------
-    # Injetamos os parametros como um array. É o unico modo que nunca falha.
-    $argsInno = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-')
-    $argsNpp  = @('/S')
-
+    $argsInno = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+    
     if ($instalarPDV) {
         Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argsInno -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
@@ -211,7 +218,7 @@ try {
     Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argsInno -DisplayName 'A7 Retaguarda'
     $installationResults.Add('A7 Retaguarda: instalado')
     
-    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments $argsNpp -DisplayName 'Notepad++'
+    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
