@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Macro Sequencial + Conclusao Automatica
+# Instalador automatico A7 Pharma - Formula Original com ENTER Continuo
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -102,7 +102,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# Macro calibrada: 1 TAB + 5 ENTER iniciais, aguardo de copia e clique no "Concluir"
+# Formula original: 1 TAB inicial + ENTER continuo ate o executavel fechar
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -111,62 +111,43 @@ function Invoke-MacroInstaller {
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
     
     try {
-        Start-Process -FilePath $Path
+        $process = Start-Process -FilePath $Path -PassThru
         $wshell = New-Object -ComObject WScript.Shell
         
-        # 1. Localiza a janela inicial
-        $targetTitle = ''
+        # 1. Aguarda a janela inicial abrir
+        $windowFound = $false
         $attempts = 0
-        while ([string]::IsNullOrWhiteSpace($targetTitle) -and $attempts -lt 60) {
+        while (-not $windowFound -and $attempts -lt 40) {
             Start-Sleep -Milliseconds 500
-            $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7.*Pharma|A7Pharma' } | Select-Object -First 1
-            if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
-                $targetTitle = $win.MainWindowTitle
+            $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
+            if ($activeWindow -and -not [string]::IsNullOrWhiteSpace($activeWindow.MainWindowTitle)) {
+                $windowFound = $true
             }
             $attempts++
         }
 
-        if ([string]::IsNullOrWhiteSpace($targetTitle)) {
+        if ($windowFound) {
+            # Garante foco na janela
+            $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
+            Start-Sleep -Milliseconds 500
+
+            # 1 TAB inicial
+            $wshell.SendKeys('{TAB}')
+            Start-Sleep -Milliseconds 500
+
+            # Dispara ENTER a cada 0.5s continuamente ate o instalador concluir e fechar
+            $contador = 0
+            while (-not $process.HasExited -and $contador -lt 1200) {
+                $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
+                $wshell.SendKeys('{ENTER}')
+                Start-Sleep -Milliseconds 500
+                $contador++
+            }
+        }
+        else {
             throw "A janela de instalacao de $DisplayName nao foi localizada a tempo."
         }
-
-        # 2. Foco e primeiro TAB
-        $wshell.AppActivate($targetTitle) | Out-Null
-        Start-Sleep -Milliseconds 600
-        $wshell.SendKeys('{TAB}')
-        Start-Sleep -Milliseconds 500
-
-        # 3. 5 ENTERs para avancar todas as paginas e iniciar a instalacao
-        for ($i = 1; $i -le 5; $i++) {
-            $wshell.AppActivate($targetTitle) | Out-Null
-            $wshell.SendKeys('{ENTER}')
-            Start-Sleep -Milliseconds 600
-        }
-
-        # 4. Pausa de 6 segundos para a extracao de ficheiros decorrer
-        Start-Sleep -Seconds 6
-
-        # 5. Monitora a conclusao e pressiona ENTER no botao "Concluir"
-        $timeout = 0
-        $instalado = $false
-        while (-not $instalado -and $timeout -lt 180) {
-            $activeWin = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7.*Pharma|A7Pharma' } | Select-Object -First 1
-            if ($activeWin -and -not [string]::IsNullOrWhiteSpace($activeWin.MainWindowTitle)) {
-                $wshell.AppActivate($activeWin.MainWindowTitle) | Out-Null
-                $wshell.SendKeys('{ENTER}')
-                Start-Sleep -Seconds 1
-            }
-            else {
-                # Confirmacao se a janela realmente fechou
-                Start-Sleep -Seconds 2
-                $recheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7.*Pharma|A7Pharma' }
-                if (-not $recheck) {
-                    $instalado = $true
-                }
-            }
-            $timeout++
-        }
-
+        
         Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
     }
     catch {
@@ -217,6 +198,7 @@ $printerMode = 'Nao configurada'
 $scriptFailed = $false
 
 try {
+    # LINKS DIRETOS E VITALICIOS
     $urlA7PDV   = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma-PDV.3.104.11.0.exe'
     $urlA7Retag = 'https://download.a7.net.br/arquivos/Instalador_A7Pharma.exe'
     $urlNotepad = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/npp.8.9.8.1.Installer.x64.exe'
