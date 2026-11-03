@@ -112,7 +112,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Instalador A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s ate fechar
+# 2. Instalador A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s baseado na janela ativa
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -121,7 +121,7 @@ function Invoke-MacroInstaller {
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
     
     try {
-        $process = Start-Process -FilePath $Path -PassThru
+        Start-Process -FilePath $Path
         $wshell = New-Object -ComObject WScript.Shell
         
         # Localiza a primeira janela
@@ -146,13 +146,21 @@ function Invoke-MacroInstaller {
         $wshell.SendKeys('{TAB}')
         Start-Sleep -Milliseconds 300
 
-        # Dispara ENTER a cada 0.5s continuamente ate o instalador concluir e fechar sozinho
+        # Dispara ENTER a cada 0.5s continuamente enquanto a janela existir
         $timeout = 0
-        while (-not $process.HasExited -and $timeout -lt 600) {
+        while ($timeout -lt 600) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 $wshell.AppActivate($win.MainWindowTitle) | Out-Null
                 $wshell.SendKeys('{ENTER}')
+            }
+            else {
+                # Aguarda 2 segundos para confirmar que a janela realmente fechou e nao esta apenas trocando de tela
+                Start-Sleep -Seconds 2
+                $checkAgain = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' }
+                if (-not $checkAgain) {
+                    break
+                }
             }
             Start-Sleep -Milliseconds 500
             $timeout++
