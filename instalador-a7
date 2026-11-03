@@ -111,7 +111,7 @@ function Download-Installer {
 }
 
 function Invoke-Installer {
-    param([string]$Path, [string[]]$Arguments, [string]$DisplayName)
+    param([string]$Path, [string]$Arguments, [string]$DisplayName)
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
     $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
     if ($process.ExitCode -notin @(0, 3010, 1641)) {
@@ -186,20 +186,22 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO)
+    # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO SEPARADO)
     # -------------------------------------------------------------------------
-    # COMANDOS CORRIGIDOS PARA INNO SETUP
-    $argumentosA7 = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-')
-    
+    # Argumentos diferentes porque os instaladores sao de motores diferentes
+    $argsPDV = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+    $argsRetag = '-q -overwrite -nofilefailures -Dinstall4j.suppressUnattendedReboot=true'
+
     if ($instalarPDV) {
-        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argumentosA7 -DisplayName 'A7 PDV'
+        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argsPDV -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
     }
     else { $installationResults.Add('A7 PDV: pulado por opcao do tecnico') }
 
-    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argumentosA7 -DisplayName 'A7 Retaguarda'
+    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argsRetag -DisplayName 'A7 Retaguarda'
     $installationResults.Add('A7 Retaguarda: instalado')
-    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments @('/S') -DisplayName 'Notepad++'
+    
+    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
