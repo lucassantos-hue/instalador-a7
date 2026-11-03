@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada (GitHub Releases)
+# Instalador automatico A7 Pharma - Macro Sequencial + Conclusao Automatica
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -28,7 +28,7 @@ if (-not (Test-IsAdministrator)) {
         return
     }
     catch {
-        Write-Host "[-] Nao foi possivel iniciar como Administrador: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "[-] Falha ao elevar Administrador: $($_.Exception.Message)" -ForegroundColor Red
         Read-Host 'Pressione Enter para sair' | Out-Null
         return
     }
@@ -59,7 +59,6 @@ function Backup-File {
     if (Test-Path -LiteralPath $Path) {
         $backup = "$Path.bak_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
         Copy-Item -LiteralPath $Path -Destination $backup -Force
-        Write-Host "[+] Backup criado: $backup" -ForegroundColor DarkGray
         return $backup
     }
     return $null
@@ -67,10 +66,9 @@ function Backup-File {
 
 function Test-InstallerFile {
     param([Parameter(Mandatory=$true)][string]$Path, [Parameter(Mandatory=$true)][string]$DisplayName)
-
     if (-not (Test-Path -LiteralPath $Path)) { throw "Arquivo nao encontrado: $Path" }
     $file = Get-Item -LiteralPath $Path
-    if ($file.Length -lt 50000) { throw "O arquivo de $DisplayName parece pequeno demais. Download interrompido." }
+    if ($file.Length -lt 50000) { throw "O arquivo de $DisplayName parece corrompido ou incompleto." }
 
     $stream = [System.IO.File]::OpenRead($Path)
     try {
@@ -79,40 +77,32 @@ function Test-InstallerFile {
     }
     finally { $stream.Dispose() }
     if ($firstBytes[0] -ne 0x4D -or $firstBytes[1] -ne 0x5A) {
-        throw "O arquivo nao parece ser um executavel Windows valido."
+        throw "O arquivo baixado nao e um executavel Windows valido."
     }
 }
 
 function Download-Installer {
     param([string]$Url, [string]$Destination, [string]$DisplayName)
     Write-Host " -> Baixando $DisplayName..." -ForegroundColor Cyan
-    
     $oldProgress = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
-    
     try {
-        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -ErrorAction Stop
-    }
-    catch {
-        $ProgressPreference = $oldProgress
-        throw "Falha ao baixar $DisplayName : $($_.Exception.Message)"
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -UserAgent "Mozilla/5.0" -ErrorAction Stop
     }
     finally {
         $ProgressPreference = $oldProgress
     }
-
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# 1. Instalador Padrao (Notepad++)
 function Invoke-SilentInstaller {
     param([string]$Path, [string]$Arguments, [string]$DisplayName)
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
-    $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
+    Start-Process -FilePath $Path -ArgumentList $Arguments -Wait
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Instalador A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s baseado na janela ativa
+# Macro calibrada: 1 TAB + 5 ENTER iniciais, aguardo de copia e clique no "Concluir"
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -124,45 +114,56 @@ function Invoke-MacroInstaller {
         Start-Process -FilePath $Path
         $wshell = New-Object -ComObject WScript.Shell
         
-        # Localiza a primeira janela
-        $windowFound = $false
+        # 1. Localiza a janela inicial
+        $targetTitle = ''
         $attempts = 0
-        while (-not $windowFound -and $attempts -lt 40) {
+        while ([string]::IsNullOrWhiteSpace($targetTitle) -and $attempts -lt 60) {
             Start-Sleep -Milliseconds 500
-            $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
-            if ($activeWindow -and -not [string]::IsNullOrWhiteSpace($activeWindow.MainWindowTitle)) {
-                $windowFound = $true
+            $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7.*Pharma|A7Pharma' } | Select-Object -First 1
+            if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
+                $targetTitle = $win.MainWindowTitle
             }
             $attempts++
         }
 
-        if (-not $windowFound) {
-            throw "A janela de instalacao de $DisplayName nao foi localizada."
+        if ([string]::IsNullOrWhiteSpace($targetTitle)) {
+            throw "A janela de instalacao de $DisplayName nao foi localizada a tempo."
         }
 
-        # Garante foco e envia 1 TAB apenas no comeco
-        $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
-        Start-Sleep -Milliseconds 400
+        # 2. Foco e primeiro TAB
+        $wshell.AppActivate($targetTitle) | Out-Null
+        Start-Sleep -Milliseconds 600
         $wshell.SendKeys('{TAB}')
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 500
 
-        # Dispara ENTER a cada 0.5s continuamente enquanto a janela existir
+        # 3. 5 ENTERs para avancar todas as paginas e iniciar a instalacao
+        for ($i = 1; $i -le 5; $i++) {
+            $wshell.AppActivate($targetTitle) | Out-Null
+            $wshell.SendKeys('{ENTER}')
+            Start-Sleep -Milliseconds 600
+        }
+
+        # 4. Pausa de 6 segundos para a extracao de ficheiros decorrer
+        Start-Sleep -Seconds 6
+
+        # 5. Monitora a conclusao e pressiona ENTER no botao "Concluir"
         $timeout = 0
-        while ($timeout -lt 600) {
-            $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
-            if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
-                $wshell.AppActivate($win.MainWindowTitle) | Out-Null
+        $instalado = $false
+        while (-not $instalado -and $timeout -lt 180) {
+            $activeWin = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7.*Pharma|A7Pharma' } | Select-Object -First 1
+            if ($activeWin -and -not [string]::IsNullOrWhiteSpace($activeWin.MainWindowTitle)) {
+                $wshell.AppActivate($activeWin.MainWindowTitle) | Out-Null
                 $wshell.SendKeys('{ENTER}')
+                Start-Sleep -Seconds 1
             }
             else {
-                # Aguarda 2 segundos para confirmar que a janela realmente fechou e nao esta apenas trocando de tela
+                # Confirmacao se a janela realmente fechou
                 Start-Sleep -Seconds 2
-                $checkAgain = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' }
-                if (-not $checkAgain) {
-                    break
+                $recheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7.*Pharma|A7Pharma' }
+                if (-not $recheck) {
+                    $instalado = $true
                 }
             }
-            Start-Sleep -Milliseconds 500
             $timeout++
         }
 
@@ -207,7 +208,7 @@ if ($instalarPDV) { Write-Host '[+] A instalacao do PDV foi selecionada.' -Foreg
 else { Write-Host '[i] O PDV sera pulado.' -ForegroundColor Yellow }
 
 # -----------------------------------------------------------------------------
-# 2. PREPARACAO E DOWNLOAD DOS INSTALADORES
+# 2. DOWNLOAD DOS INSTALADORES
 # -----------------------------------------------------------------------------
 $tempDir = Join-Path 'C:\TempInstaladores' ("A7_" + (Get-Date -Format 'yyyyMMdd_HHmmss'))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -216,7 +217,6 @@ $printerMode = 'Nao configurada'
 $scriptFailed = $false
 
 try {
-    # LINKS OFICIAIS DIRETOS E VITALICIOS VIA GITHUB RELEASES
     $urlA7PDV   = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma-PDV.3.104.11.0.exe'
     $urlA7Retag = 'https://download.a7.net.br/arquivos/Instalador_A7Pharma.exe'
     $urlNotepad = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/npp.8.9.8.1.Installer.x64.exe'
@@ -253,10 +253,7 @@ try {
     if (Test-Path 'C:\Alpha7') {
         $arquivosJvmArgs = @(Get-ChildItem -Path 'C:\Alpha7' -Filter '*.jvmargs' -Recurse -File -ErrorAction SilentlyContinue)
     }
-    if ($arquivosJvmArgs.Count -eq 0) {
-        Write-Host '[!] Nenhum arquivo .jvmargs encontrado em C:\Alpha7.' -ForegroundColor Yellow
-    }
-    else {
+    if ($arquivosJvmArgs.Count -gt 0) {
         foreach ($arquivo in $arquivosJvmArgs) {
             $texto = [System.IO.File]::ReadAllText($arquivo.FullName)
             $linhas = @($texto -split "`r?`n")
@@ -283,11 +280,8 @@ try {
         if ($serverIpInformado) {
             $parsedIp = $null
             if (-not [System.Net.IPAddress]::TryParse($serverIp, [ref]$parsedIp) -or $parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
-                throw 'IP do servidor invalido. Informe um endereco IPv4 ou pressione Enter para pular somente esse campo.'
+                throw 'IP do servidor invalido. Informe um endereco IPv4 valido.'
             }
-        }
-        else {
-            Write-Host '[i] IP do servidor nao informado.' -ForegroundColor Yellow
         }
 
         $caixa = Read-Host 'Digite o numero do caixa (ex: 1, 2, 3)'
@@ -335,12 +329,8 @@ try {
             if (-not $foundEndereco) { $lines += ('impressora.endereco=\\{0}\{1}' -f $ipImpressora, $compImpressora) }
 
             [System.IO.File]::WriteAllLines($propertiesPath, $lines, [System.Text.UTF8Encoding]::new($false))
-            Write-Host '[+] pdv.properties atualizado. Backup preservado.' -ForegroundColor Green
-            if ($serverIpInformado) { $installationResults.Add('pdv.properties: configurado (servidor, caixa e impressora)') }
-            else { $installationResults.Add('pdv.properties: configurado (caixa e impressora)') }
-        }
-        else {
-            Write-Host "[!] Arquivo nao encontrado: $propertiesPath" -ForegroundColor Yellow
+            Write-Host '[+] pdv.properties atualizado com sucesso.' -ForegroundColor Green
+            $installationResults.Add('pdv.properties: configurado')
         }
     }
 
@@ -359,32 +349,19 @@ try {
             $printerMode = 'Local/servidor'
             $printers = @(Get-Printer | Sort-Object Name)
             if ($printers.Count -eq 0) { throw 'Nenhuma impressora instalada.' }
-            Write-Host "`nImpressoras encontradas:" -ForegroundColor Yellow
             for ($i = 0; $i -lt $printers.Count; $i++) {
                 Write-Host ("[{0}] {1} | Porta: {2}" -f ($i + 1), $printers[$i].Name, $printers[$i].PortName)
             }
-            $selection = Read-Host 'Digite o numero da impressora que deseja compartilhar'
-            if ($selection -notmatch '^\d+$' -or [int]$selection -lt 1 -or [int]$selection -gt $printers.Count) { throw 'Selecao invalida.' }
+            $selection = Read-Host 'Digite o numero da impressora'
             $selectedPrinter = $printers[[int]$selection - 1]
-            
             Set-Printer -Name $selectedPrinter.Name -Shared $true -ShareName 'CX'
             Write-Host "[+] Impressora '$($selectedPrinter.Name)' compartilhada como CX." -ForegroundColor Green
-
-            if (Read-YesNo 'Deseja habilitar as regras padrao de Compartilhamento no firewall? (S/N)' $true) {
-                $fwRules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Direction -eq 'Inbound' -and ($_.DisplayGroup -match 'File and Printer Sharing|Compartilhamento de Arquivos e Impressoras') })
-                if ($fwRules.Count -gt 0) {
-                    $fwRules | Set-NetFirewallRule -Enabled True -Profile Domain,Private
-                    Write-Host '[+] Regras de firewall habilitadas.' -ForegroundColor Green
-                }
-            }
-            $installationResults.Add("Impressora local: $($selectedPrinter.Name) compartilhada como CX")
+            $installationResults.Add("Impressora local: $($selectedPrinter.Name) (CX)")
         }
         elseif ($printerChoice -match '^0$') {
             $printerMode = 'Remota/terminal'
             $remoteHost = Read-Host 'Digite o IP/nome do computador que compartilha a impressora'
-            if ([string]::IsNullOrWhiteSpace($remoteHost) -or $remoteHost -match '[\\/:\s]') { throw 'IP remoto invalido.' }
             $uncPath = "\\$remoteHost\CX"
-            Write-Host "=> Conectando a $uncPath ..." -ForegroundColor Yellow
             Add-Printer -ConnectionName $uncPath
             Write-Host "[+] Conexao adicionada: $uncPath" -ForegroundColor Green
             $installationResults.Add("Impressora remota: $uncPath conectada")
@@ -394,13 +371,13 @@ try {
         }
     }
     catch {
-        $printerMode = 'Falha na configuracao'
+        $printerMode = 'Nao configurada'
         Write-Host "[!] Falha na impressora: $($_.Exception.Message)" -ForegroundColor Yellow
         $installationResults.Add('Impressora: nao configurada')
     }
 
     # -------------------------------------------------------------------------
-    # 7. ATALHOS E ICONES EM ALTA QUALIDADE
+    # 7. ATALHOS E ICONES
     # -------------------------------------------------------------------------
     Write-Host "`n=> Criando atalhos e icones..." -ForegroundColor Yellow
     $desktop = [Environment]::GetFolderPath('Desktop')
@@ -418,21 +395,16 @@ try {
         try {
             $g.Clear([System.Drawing.Color]::Transparent)
             $g.InterpolationMode  = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-            $g.SmoothingMode      = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
-            $g.PixelOffsetMode    = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-            $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
             $g.DrawImage($srcImg, 0, 0, 128, 128)
             $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
             $pngBytes = $ms.ToArray()
 
             $fs = [System.IO.File]::Open($DestinationIco, [System.IO.FileMode]::Create)
             $bw = New-Object System.IO.BinaryWriter($fs)
-            
             $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]1)
             $bw.Write([byte]128); $bw.Write([byte]128); $bw.Write([byte]0); $bw.Write([byte]0)
             $bw.Write([uint16]1); $bw.Write([uint16]32)
             $bw.Write([uint32]$pngBytes.Length); $bw.Write([uint32]22)
-
             $bw.Write($pngBytes)
             $bw.Flush()
         }
@@ -445,27 +417,22 @@ try {
         }
     }
 
-    $kbPng = Join-Path $iconFolder 'KB.png'
     $kbIco = Join-Path $iconFolder 'KB_128.ico'
-    $chatPng = Join-Path $iconFolder 'Atendimento.png'
     $chatIco = Join-Path $iconFolder 'Atendimento_128.ico'
-    $suportePng = Join-Path $iconFolder 'Suporte.png'
     $suporteIco = Join-Path $iconFolder 'Suporte_128.ico'
 
     try {
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png' -OutFile $kbPng -UseBasicParsing -ErrorAction SilentlyContinue
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png' -OutFile $chatPng -UseBasicParsing -ErrorAction SilentlyContinue
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png' -OutFile $suportePng -UseBasicParsing -ErrorAction SilentlyContinue
+        $p1 = Join-Path $iconFolder 'kb.png'; $p2 = Join-Path $iconFolder 'at.png'; $p3 = Join-Path $iconFolder 'sp.png'
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png' -OutFile $p1 -UseBasicParsing -ErrorAction SilentlyContinue
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png' -OutFile $p2 -UseBasicParsing -ErrorAction SilentlyContinue
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png' -OutFile $p3 -UseBasicParsing -ErrorAction SilentlyContinue
 
-        Convert-PngToIco -SourcePng $kbPng -DestinationIco $kbIco
-        Convert-PngToIco -SourcePng $chatPng -DestinationIco $chatIco
-        Convert-PngToIco -SourcePng $suportePng -DestinationIco $suporteIco
-
-        Remove-Item -LiteralPath $kbPng, $chatPng, $suportePng -Force -ErrorAction SilentlyContinue
+        Convert-PngToIco -SourcePng $p1 -DestinationIco $kbIco
+        Convert-PngToIco -SourcePng $p2 -DestinationIco $chatIco
+        Convert-PngToIco -SourcePng $p3 -DestinationIco $suporteIco
+        Remove-Item -LiteralPath $p1, $p2, $p3 -Force -ErrorAction SilentlyContinue
     }
-    catch {
-        Write-Host "[!] Falha ao baixar icones personalizados." -ForegroundColor Yellow
-    }
+    catch {}
 
     $shortcuts = @(
         @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco },
@@ -482,41 +449,16 @@ try {
         [System.IO.File]::WriteAllText($shortcutPath, $shortcutContent, [System.Text.Encoding]::ASCII)
     }
 
-    $desktopLocations = @(
-        [Environment]::GetFolderPath('Desktop'),
-        [Environment]::GetFolderPath('CommonDesktopDirectory')
-    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
-
+    # Renomeia o atalho principal para A7Pharma Retaguarda
     $shell = New-Object -ComObject WScript.Shell
-    foreach ($loc in $desktopLocations) {
-        $candidateOld = Join-Path $loc 'A7Pharma.lnk'
-        $candidateNew = Join-Path $loc 'A7Pharma Retaguarda.lnk'
-
-        if (Test-Path -LiteralPath $candidateOld) {
-            try {
-                $shortcutInfo = $shell.CreateShortcut($candidateOld)
-                if ($shortcutInfo.TargetPath -match 'A7|Alpha7') {
-                    if (Test-Path -LiteralPath $candidateNew) {
-                        Remove-Item -LiteralPath $candidateNew -Force -ErrorAction SilentlyContinue
-                    }
-                    Rename-Item -LiteralPath $candidateOld -NewName 'A7Pharma Retaguarda.lnk' -Force
-                    Write-Host "[+] Atalho renomeado para A7Pharma Retaguarda em: $loc" -ForegroundColor Green
-                }
-            }
-            catch {}
-        }
-    }
-
-    $ie4uinit = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
-    if (Test-Path $ie4uinit) {
-        Start-Process -FilePath $ie4uinit -ArgumentList '-ClearIconCache' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-        Start-Process -FilePath $ie4uinit -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue
+    $oldLnk = Join-Path $desktop 'A7Pharma.lnk'
+    $newLnk = Join-Path $desktop 'A7Pharma Retaguarda.lnk'
+    if (Test-Path -LiteralPath $oldLnk) {
+        if (Test-Path -LiteralPath $newLnk) { Remove-Item -LiteralPath $newLnk -Force -ErrorAction SilentlyContinue }
+        Rename-Item -LiteralPath $oldLnk -NewName 'A7Pharma Retaguarda.lnk' -Force
     }
     $installationResults.Add('Atalhos e icones: criados')
 
-    # -------------------------------------------------------------------------
-    # 8. PAINEL FINAL E LIMPEZA
-    # -------------------------------------------------------------------------
     Write-Host "`n=> Limpando arquivos temporarios..." -ForegroundColor Gray
 }
 catch {
@@ -530,26 +472,24 @@ finally {
     }
 }
 
+# -----------------------------------------------------------------------------
+# 8. RESUMO FINAL
+# -----------------------------------------------------------------------------
 if ($scriptFailed) {
     Write-Host "`n============================================================" -ForegroundColor Red
     Write-Host ' INSTALACAO INTERROMPIDA - VERIFIQUE A MENSAGEM ACIMA' -ForegroundColor Red
     Write-Host '============================================================' -ForegroundColor Red
 }
 else {
-    if ($printerMode -eq 'Remota/terminal') {
-        Write-Host "`n[OK] Configuracao do terminal finalizada." -ForegroundColor Green
-    }
-    else {
-        Write-Host "`n============================================================" -ForegroundColor Green
-        Write-Host '             IMPLANTACAO FINALIZADA' -ForegroundColor Green
-        Write-Host '============================================================' -ForegroundColor Green
-        Write-Host ("Computador : {0}" -f $env:COMPUTERNAME) -ForegroundColor Cyan
-        Write-Host ("IP IPv4    : {0}" -f (Get-IPv4ForSummary)) -ForegroundColor Cyan
-        Write-Host ("Impressora : {0}" -f $printerMode) -ForegroundColor Cyan
-        Write-Host "`nResumo:" -ForegroundColor Yellow
-        foreach ($result in $installationResults) { Write-Host " - $result" }
-        Write-Host "`n[OK] Processo concluido." -ForegroundColor Green
-    }
+    Write-Host "`n============================================================" -ForegroundColor Green
+    Write-Host '             IMPLANTACAO FINALIZADA' -ForegroundColor Green
+    Write-Host '============================================================' -ForegroundColor Green
+    Write-Host ("Computador : {0}" -f $env:COMPUTERNAME) -ForegroundColor Cyan
+    Write-Host ("IP IPv4    : {0}" -f (Get-IPv4ForSummary)) -ForegroundColor Cyan
+    Write-Host ("Impressora : {0}" -f $printerMode) -ForegroundColor Cyan
+    Write-Host "`nResumo:" -ForegroundColor Yellow
+    foreach ($result in $installationResults) { Write-Host " - $result" }
+    Write-Host "`n[OK] Processo concluido com sucesso." -ForegroundColor Green
 }
 
 Write-Host ''
