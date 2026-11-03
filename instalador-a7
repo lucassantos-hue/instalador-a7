@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada (MACRO 1 TAB + ENTER)
+# Instalador automatico A7 Pharma - Macro Sequencial (1 TAB + 5 ENTER a cada 0.5s)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -105,7 +105,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Macro Cirurgica: 1 TAB inicial, depois só ENTER
+# 2. Macro com 1 TAB seguido de 5 ENTERs (intervalo de 0.5s)
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -113,47 +113,48 @@ function Invoke-MacroInstaller {
     )
     Write-Host "`n========================================================" -ForegroundColor Red
     Write-Host " [MACRO] INICIANDO A INSTALACAO DO $DisplayName" -ForegroundColor Magenta
-    Write-Host " ATENCAO: TIRE AS MAOS DO TECLADO E DO MOUSE AGORA!" -ForegroundColor Red
+    Write-Host " SEQUENCIA: 1 TAB + 5 ENTER (INTERVALO DE 0.5s)" -ForegroundColor Yellow
+    Write-Host " ATENCAO: NAO MEXA NO TECLADO NEM NO RATO!" -ForegroundColor Red
     Write-Host "========================================================`n" -ForegroundColor Red
     
     try {
-        Start-Process -FilePath $Path
+        $process = Start-Process -FilePath $Path -PassThru
         $wshell = New-Object -ComObject WScript.Shell
         
-        # Espera o instalador abrir
-        Start-Sleep -Seconds 5 
-        
-        $timeout = 0
-        $primeiroClique = $true
-        
-        while ($timeout -lt 240) {
+        # Aguarda a janela inicial abrir
+        $windowFound = $false
+        $attempts = 0
+        while (-not $windowFound -and $attempts -lt 40) {
+            Start-Sleep -Milliseconds 500
             $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
-            
             if ($activeWindow -and -not [string]::IsNullOrWhiteSpace($activeWindow.MainWindowTitle)) {
-                # Foca na janela
-                $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
-                Start-Sleep -Milliseconds 400
-                
-                # Se for a primeira vez que acha a janela, dá o TAB
-                if ($primeiroClique) {
-                    $wshell.SendKeys('{TAB}')
-                    Start-Sleep -Milliseconds 200
-                    $primeiroClique = $false # Desliga o TAB para as proximas telas
-                }
-                
-                # Aperta ENTER (tanto na primeira quanto nas proximas)
-                $wshell.SendKeys('{ENTER}')
-                
-            } else {
-                # Verifica se a instalacao acabou (janela sumiu)
-                Start-Sleep -Seconds 2
-                $activeWindowCheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' }
-                if (-not $activeWindowCheck) {
-                    break 
-                }
+                $windowFound = $true
             }
-            Start-Sleep -Milliseconds 1500
-            $timeout++
+            $attempts++
+        }
+
+        if ($windowFound) {
+            # Garante foco na janela
+            $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
+            Start-Sleep -Milliseconds 500
+
+            # 1 TAB inicial
+            $wshell.SendKeys('{TAB}')
+            Start-Sleep -Milliseconds 500
+
+            # 5 ENTERs sucessivos a cada 0.5s
+            for ($i = 1; $i -le 5; $i++) {
+                $wshell.SendKeys('{ENTER}')
+                Start-Sleep -Milliseconds 500
+            }
+
+            # Aguarda o processo terminar a instalacao e fechar
+            while (-not $process.HasExited) {
+                Start-Sleep -Seconds 1
+            }
+        }
+        else {
+            throw "A janela de instalacao de $DisplayName nao foi localizada a tempo."
         }
         
         Write-Host "[+] $DisplayName instalado com sucesso via Macro." -ForegroundColor Green
@@ -225,12 +226,12 @@ try {
     # -------------------------------------------------------------------------
     if ($instalarPDV) {
         Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV'
-        $installationResults.Add('A7 PDV: instalado (Macro)')
+        $installationResults.Add('A7 PDV: instalado (Macro 1 TAB + 5 ENTER)')
     }
     else { $installationResults.Add('A7 PDV: pulado') }
 
     Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
-    $installationResults.Add('A7 Retaguarda: instalado (Macro)')
+    $installationResults.Add('A7 Retaguarda: instalado (Macro 1 TAB + 5 ENTER)')
     
     Invoke-SilentInstaller -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
