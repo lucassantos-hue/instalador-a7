@@ -110,8 +110,9 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
+# Aqui foi corrigido para aceitar um [string[]] (Array de argumentos) para o instalador reconhecer
 function Invoke-Installer {
-    param([string]$Path, [string]$Arguments, [string]$DisplayName)
+    param([string]$Path, [string[]]$Arguments, [string]$DisplayName)
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
     $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
     if ($process.ExitCode -notin @(0, 3010, 1641)) {
@@ -186,9 +187,11 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (AVANCO AUTOMATICO SILENCIOSO)
+    # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO)
     # -------------------------------------------------------------------------
-    $argumentosA7 = '-q -overwrite -nofilefailures -Dinstall4j.suppressUnattendedReboot=true'
+    # Alterado para um Array (@), assim o PowerShell envia cada parametro perfeitamente ao instalador.
+    $argumentosA7 = @('-q', '-overwrite', '-nofilefailures', '-Dinstall4j.suppressUnattendedReboot=true')
+    
     if ($instalarPDV) {
         Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argumentosA7 -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
@@ -197,7 +200,7 @@ try {
 
     Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argumentosA7 -DisplayName 'A7 Retaguarda'
     $installationResults.Add('A7 Retaguarda: instalado')
-    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
+    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments @('/S') -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
