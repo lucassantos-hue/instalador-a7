@@ -186,9 +186,9 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS
+    # 3. INSTALACAO DOS PROGRAMAS (AVANCO AUTOMATICO SILENCIOSO)
     # -------------------------------------------------------------------------
-    $argumentosA7 = '-q'
+    $argumentosA7 = '-q -overwrite -nofilefailures -Dinstall4j.suppressUnattendedReboot=true'
     if ($instalarPDV) {
         Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argumentosA7 -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
@@ -500,18 +500,32 @@ try {
         Write-Host "[+] Atalho criado: $($shortcut.Name)" -ForegroundColor Green
     }
 
-    $oldA7Shortcut = Join-Path $desktop 'A7Pharma.lnk'
-    $newA7Shortcut = Join-Path $desktop 'A7Pharma Retaguarda.lnk'
-    if ((Test-Path -LiteralPath $oldA7Shortcut) -and -not (Test-Path -LiteralPath $newA7Shortcut)) {
-        try {
-            $shell = New-Object -ComObject WScript.Shell
-            $shortcutInfo = $shell.CreateShortcut($oldA7Shortcut)
-            if ($shortcutInfo.TargetPath -match 'A7|Alpha7') {
-                Rename-Item -LiteralPath $oldA7Shortcut -NewName 'A7Pharma Retaguarda.lnk'
-                Write-Host '[+] Atalho A7Pharma renomeado para A7Pharma Retaguarda.' -ForegroundColor Green
+    # Procura e renomeia o atalho do aplicativo tanto no Desktop do usuario atual quanto no Publico
+    $desktopLocations = @(
+        [Environment]::GetFolderPath('Desktop'),
+        [Environment]::GetFolderPath('CommonDesktopDirectory')
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($loc in $desktopLocations) {
+        $candidateOld = Join-Path $loc 'A7Pharma.lnk'
+        $candidateNew = Join-Path $loc 'A7Pharma Retaguarda.lnk'
+
+        if (Test-Path -LiteralPath $candidateOld) {
+            try {
+                $shortcutInfo = $shell.CreateShortcut($candidateOld)
+                if ($shortcutInfo.TargetPath -match 'A7|Alpha7') {
+                    if (Test-Path -LiteralPath $candidateNew) {
+                        Remove-Item -LiteralPath $candidateNew -Force -ErrorAction SilentlyContinue
+                    }
+                    Rename-Item -LiteralPath $candidateOld -NewName 'A7Pharma Retaguarda.lnk' -Force
+                    Write-Host "[+] Atalho renomeado para A7Pharma Retaguarda em: $loc" -ForegroundColor Green
+                }
+            }
+            catch {
+                Write-Host "[!] Nao foi possivel renomear o atalho em $loc: $($_.Exception.Message)" -ForegroundColor Yellow
             }
         }
-        catch { Write-Host "[!] Nao foi possivel validar/renomear o atalho A7: $($_.Exception.Message)" -ForegroundColor Yellow }
     }
 
     $ie4uinit = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
