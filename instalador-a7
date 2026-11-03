@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada
+# Instalador automatico A7 Pharma - versao consolidada (GitHub Releases)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -54,11 +54,6 @@ function Read-YesNo {
     }
 }
 
-function Get-DecodedString {
-    param([Parameter(Mandatory=$true)][string]$Base64)
-    return [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Base64))
-}
-
 function Backup-File {
     param([Parameter(Mandatory=$true)][string]$Path)
     if (Test-Path -LiteralPath $Path) {
@@ -91,9 +86,21 @@ function Test-InstallerFile {
 function Download-Installer {
     param([string]$Url, [string]$Destination, [string]$DisplayName)
     Write-Host " -> Baixando $DisplayName..." -ForegroundColor Cyan
-    $client = New-Object System.Net.WebClient
-    try { $client.DownloadFile($Url, $Destination) }
-    finally { $client.Dispose() }
+    
+    $oldProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -ErrorAction Stop
+    }
+    catch {
+        $ProgressPreference = $oldProgress
+        throw "Falha ao baixar $DisplayName : $($_.Exception.Message)"
+    }
+    finally {
+        $ProgressPreference = $oldProgress
+    }
+
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
@@ -105,7 +112,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Macro A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s ate fechar
+# 2. Instalador A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s ate fechar
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -133,7 +140,7 @@ function Invoke-MacroInstaller {
             throw "A janela de instalacao de $DisplayName nao foi localizada."
         }
 
-        # Garante foco e manda 1 TAB apenas no comeco
+        # Garante foco e envia 1 TAB apenas no comeco
         $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
         Start-Sleep -Milliseconds 400
         $wshell.SendKeys('{TAB}')
@@ -175,14 +182,12 @@ function Get-IPv4ForSummary {
 # -----------------------------------------------------------------------------
 # 1. CONTROLE DE ACESSO E ESCOLHA DO PDV
 # -----------------------------------------------------------------------------
-$senhaOculta = 'c3VwZXJ0dXg='
-$senhaCorreta = Get-DecodedString -Base64 $senhaOculta
 $senhaSegura = Read-Host 'Por favor, digite a senha de autorizacao' -AsSecureString
 $senhaPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($senhaSegura)
 try { $senhaDigitada = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($senhaPtr) }
 finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($senhaPtr) }
 
-if ($senhaDigitada -cne $senhaCorreta) {
+if ($senhaDigitada -cne 'supertux') {
     Write-Host "`n[-] ACESSO NEGADO: senha incorreta." -ForegroundColor Red
     Read-Host 'Pressione Enter para sair' | Out-Null
     return
@@ -203,9 +208,10 @@ $printerMode = 'Nao configurada'
 $scriptFailed = $false
 
 try {
-    $urlA7PDV = Get-DecodedString 'aHR0cHM6Ly93d3cuZHJvcGJveC5jb20vc2NsL2ZpLzRhbzRpazR3aWZ1enk0Z3lmYmM5Yy9BN1BoYXJtYS1QRFYtMy4xMDQuMTEuMC5leGU/cmxrZXk9enV1Mzk4cjIxbXZ6amxlOTl1cGlseTRwaiZzdD1iZ252eDl5NSZkbD0x'
-    $urlA7Retag = Get-DecodedString 'aHR0cHM6Ly9kb3dubG9hZC5hNy5uZXQuYnIvYXJxdWl2b3MvSW5zdGFsYWRvcl9BN1BoYXJtYS5leGU='
-    $urlNotepad = Get-DecodedString 'aHR0cHM6Ly93d3cuZHJvcGJveC5jb20vc2NsL2ZpL3dvdm5jZHZiMnA4cnA5Mmw2anVkMC9ucHAuOC45LjYuMi5JbnN0YWxsZXIueDY0LmV4ZT9ybGtleT1zdjR1ejFoMmt0MWthcTlhcWY4enN1dHpjJnN0PXVpZDV3MHUwJmRsPTE='
+    # LINKS OFICIAIS DIRETOS E VITALICIOS VIA GITHUB RELEASES
+    $urlA7PDV   = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma-PDV.3.104.11.0.exe'
+    $urlA7Retag = 'https://download.a7.net.br/arquivos/Instalador_A7Pharma.exe'
+    $urlNotepad = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/npp.8.9.8.1.Installer.x64.exe'
 
     Write-Host "`n=> Baixando instaladores..." -ForegroundColor Yellow
     if ($instalarPDV) {
@@ -438,11 +444,10 @@ try {
     $suportePng = Join-Path $iconFolder 'Suporte.png'
     $suporteIco = Join-Path $iconFolder 'Suporte_128.ico'
 
-    $iconClient = New-Object System.Net.WebClient
     try {
-        $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png', $kbPng)
-        $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png', $chatPng)
-        $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png', $suportePng)
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png' -OutFile $kbPng -UseBasicParsing -ErrorAction SilentlyContinue
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png' -OutFile $chatPng -UseBasicParsing -ErrorAction SilentlyContinue
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png' -OutFile $suportePng -UseBasicParsing -ErrorAction SilentlyContinue
 
         Convert-PngToIco -SourcePng $kbPng -DestinationIco $kbIco
         Convert-PngToIco -SourcePng $chatPng -DestinationIco $chatIco
@@ -453,7 +458,6 @@ try {
     catch {
         Write-Host "[!] Falha ao baixar icones personalizados." -ForegroundColor Yellow
     }
-    finally { $iconClient.Dispose() }
 
     $shortcuts = @(
         @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco },
