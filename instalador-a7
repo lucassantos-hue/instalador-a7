@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada
+# Instalador automatico A7 Pharma - versao consolidada (ENTER CONTINUO A CADA 0.5s)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -105,7 +105,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Instalador A7Pharma com Macro limpa e fechamento no botão Concluir
+# 2. Instalador A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s ate o fim
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -117,7 +117,7 @@ function Invoke-MacroInstaller {
         $process = Start-Process -FilePath $Path -PassThru
         $wshell = New-Object -ComObject WScript.Shell
         
-        # Localizacao da janela inicial
+        # Localiza a primeira janela
         $windowFound = $false
         $attempts = 0
         while (-not $windowFound -and $attempts -lt 40) {
@@ -133,29 +133,22 @@ function Invoke-MacroInstaller {
             throw "A janela de instalacao de $DisplayName nao foi localizada."
         }
 
-        # Foco e sequencia inicial (1 TAB + 5 ENTER a cada 0.5s)
+        # Garante foco e manda 1 TAB apenas no começo
         $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
-        Start-Sleep -Milliseconds 500
-
+        Start-Sleep -Milliseconds 400
         $wshell.SendKeys('{TAB}')
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 300
 
-        for ($i = 1; $i -le 5; $i++) {
-            $wshell.SendKeys('{ENTER}')
-            Start-Sleep -Milliseconds 500
-        }
-
-        # Monitoramento da copia de arquivos e acionamento do botao Concluir
-        $timeoutFinal = 0
-        while (-not $process.HasExited -and $timeoutFinal -lt 180) {
-            Start-Sleep -Seconds 1
+        # Dispara ENTER a cada 0.5s continuamente ate o instalador fechar sozinho
+        $timeout = 0
+        while (-not $process.HasExited -and $timeout -lt 600) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 $wshell.AppActivate($win.MainWindowTitle) | Out-Null
-                Start-Sleep -Milliseconds 200
                 $wshell.SendKeys('{ENTER}')
             }
-            $timeoutFinal++
+            Start-Sleep -Milliseconds 500
+            $timeout++
         }
 
         Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
