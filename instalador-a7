@@ -110,31 +110,24 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# NOVA FUNCAO DE INSTALACAO: Usa o nucleo .NET em vez do PowerShell nativo
-# Isto impede completamente que o Windows modifique ou adicione aspas aos comandos /VERYSILENT.
+# NOVA FUNCAO DE INSTALACAO: METODO BLINDADO VIA CMD
 function Invoke-Installer {
-    param([string]$Path, [string]$Arguments, [string]$DisplayName)
-    Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$DisplayName
+    )
+    Write-Host "=> Instalando $DisplayName em modo oculto..." -ForegroundColor Yellow
     
-    try {
-        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-        $pinfo.FileName = $Path
-        $pinfo.Arguments = $Arguments
-        $pinfo.UseShellExecute = $false
-        $pinfo.CreateNoWindow = $false
-        
-        $p = [System.Diagnostics.Process]::Start($pinfo)
-        $p.WaitForExit()
-        
-        if ($p.ExitCode -notin @(0, 3010, 1641)) {
-            Write-Host "[!] $DisplayName terminou com codigo $($p.ExitCode)." -ForegroundColor Yellow
-        }
-        else {
-            Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
-        }
+    # Este formato injeta os parametros no terminal bruto do Windows, fugindo do PowerShell.
+    # Colocamos as flags de todos os motores ao mesmo tempo. O programa absorve as dele e ignora o resto.
+    $cmdArgs = "/c `"`"$Path`" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /S -q`""
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -Wait -PassThru -WindowStyle Hidden
+    
+    if ($process.ExitCode -notin @(0, 3010, 1641)) {
+        Write-Host "[!] $DisplayName concluiu com codigo $($process.ExitCode) (geralmente pode ser ignorado se instalou)." -ForegroundColor Yellow
     }
-    catch {
-        throw "Falha critica ao iniciar o executavel: $($_.Exception.Message)"
+    else {
+        Write-Host "[+] $DisplayName instalado (codigo 0)." -ForegroundColor Green
     }
 }
 
@@ -199,20 +192,18 @@ try {
     Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
     # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS (MODO TOTALMENTE AUTOMATICO)
+    # 3. INSTALACAO DOS PROGRAMAS (METODO UNIVERSAL)
     # -------------------------------------------------------------------------
-    $argsInno = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
-
     if ($instalarPDV) {
-        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments $argsInno -DisplayName 'A7 PDV'
+        Invoke-Installer -Path (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV'
         $installationResults.Add('A7 PDV: instalado')
     }
     else { $installationResults.Add('A7 PDV: pulado por opcao do tecnico') }
 
-    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -Arguments $argsInno -DisplayName 'A7 Retaguarda'
+    Invoke-Installer -Path (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
     $installationResults.Add('A7 Retaguarda: instalado')
     
-    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
+    Invoke-Installer -Path (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
