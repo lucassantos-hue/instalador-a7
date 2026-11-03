@@ -110,23 +110,31 @@ function Download-Installer {
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
-# AQUI ESTA A CORRECAO FINAL: Forcamos o PowerShell a partir os argumentos por espaços
-# para entregar cada parametro isolado e garantir o modo silencioso.
+# NOVA FUNCAO DE INSTALACAO: Usa o nucleo .NET em vez do PowerShell nativo
+# Isto impede completamente que o Windows modifique ou adicione aspas aos comandos /VERYSILENT.
 function Invoke-Installer {
     param([string]$Path, [string]$Arguments, [string]$DisplayName)
     Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
     
-    $argArray = $Arguments -split ' ' | Where-Object { $_ -ne '' }
-    $process = Start-Process -FilePath $Path -ArgumentList $argArray -Wait -PassThru
-    
-    if ($process.ExitCode -notin @(0, 3010, 1641)) {
-        throw "A instalacao de $DisplayName retornou codigo $($process.ExitCode)."
+    try {
+        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+        $pinfo.FileName = $Path
+        $pinfo.Arguments = $Arguments
+        $pinfo.UseShellExecute = $false
+        $pinfo.CreateNoWindow = $false
+        
+        $p = [System.Diagnostics.Process]::Start($pinfo)
+        $p.WaitForExit()
+        
+        if ($p.ExitCode -notin @(0, 3010, 1641)) {
+            Write-Host "[!] $DisplayName terminou com codigo $($p.ExitCode)." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
+        }
     }
-    if ($process.ExitCode -in @(3010, 1641)) {
-        Write-Host "[!] $DisplayName solicitou reinicializacao (codigo $($process.ExitCode))." -ForegroundColor Yellow
-    }
-    else {
-        Write-Host "[+] $DisplayName instalado (codigo 0)." -ForegroundColor Green
+    catch {
+        throw "Falha critica ao iniciar o executavel: $($_.Exception.Message)"
     }
 }
 
