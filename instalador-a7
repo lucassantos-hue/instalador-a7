@@ -1,8 +1,8 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada (ENTER CONTINUO A CADA 0.5s)
+# Instalador automatico A7 Pharma - versao consolidada
 
 $ErrorActionPreference = 'Stop'
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11 -bor [System.Net.SecurityProtocolType]::Tls
 
 # -----------------------------------------------------------------------------
 # 0. AUTO-ELEVACAO DE ADMINISTRADOR
@@ -91,9 +91,26 @@ function Test-InstallerFile {
 function Download-Installer {
     param([string]$Url, [string]$Destination, [string]$DisplayName)
     Write-Host " -> Baixando $DisplayName..." -ForegroundColor Cyan
-    $client = New-Object System.Net.WebClient
-    try { $client.DownloadFile($Url, $Destination) }
-    finally { $client.Dispose() }
+    
+    $downloaded = $false
+    try {
+        $client = New-Object System.Net.WebClient
+        $client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        $client.DownloadFile($Url, $Destination)
+        $client.Dispose()
+        $downloaded = $true
+    }
+    catch {
+        # Fallback caso o WebClient falhe na negociacao de headers
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            $downloaded = $true
+        }
+        catch {
+            throw "Falha no download de $DisplayName : $($_.Exception.Message)"
+        }
+    }
+
     Test-InstallerFile -Path $Destination -DisplayName $DisplayName
 }
 
@@ -105,7 +122,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Instalador A7Pharma: 1 TAB inicial e ENTER continuo a cada 0.5s ate o fim
+# 2. Instalador A7Pharma: 1 TAB inicial e ENTER a cada 1s sem travar fila
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -117,11 +134,10 @@ function Invoke-MacroInstaller {
         $process = Start-Process -FilePath $Path -PassThru
         $wshell = New-Object -ComObject WScript.Shell
         
-        # Localiza a primeira janela
         $windowFound = $false
         $attempts = 0
-        while (-not $windowFound -and $attempts -lt 40) {
-            Start-Sleep -Milliseconds 500
+        while (-not $windowFound -and $attempts -lt 60) {
+            Start-Sleep -Seconds 1
             $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($activeWindow -and -not [string]::IsNullOrWhiteSpace($activeWindow.MainWindowTitle)) {
                 $windowFound = $true
@@ -135,11 +151,11 @@ function Invoke-MacroInstaller {
 
         # Garante foco e manda 1 TAB apenas no começo
         $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
-        Start-Sleep -Milliseconds 400
+        Start-Sleep -Milliseconds 600
         $wshell.SendKeys('{TAB}')
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 400
 
-        # Dispara ENTER a cada 0.5s continuamente ate o instalador fechar sozinho
+        # Dispara ENTER a cada 1s continuamente ate o instalador concluir e fechar
         $timeout = 0
         while (-not $process.HasExited -and $timeout -lt 600) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
@@ -147,7 +163,7 @@ function Invoke-MacroInstaller {
                 $wshell.AppActivate($win.MainWindowTitle) | Out-Null
                 $wshell.SendKeys('{ENTER}')
             }
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Seconds 1
             $timeout++
         }
 
@@ -440,6 +456,7 @@ try {
 
     $iconClient = New-Object System.Net.WebClient
     try {
+        $iconClient.Headers.Add("User-Agent", "Mozilla/5.0")
         $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png', $kbPng)
         $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png', $chatPng)
         $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png', $suportePng)
