@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada (MACRO COM COMBO TAB+ENTER)
+# Instalador automatico A7 Pharma - versao consolidada (MACRO 1 TAB + ENTER)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -105,7 +105,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# 2. Macro de Cliques com sequência TAB + ENTER
+# 2. Macro Cirurgica: 1 TAB inicial, depois só ENTER
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -114,34 +114,38 @@ function Invoke-MacroInstaller {
     Write-Host "`n========================================================" -ForegroundColor Red
     Write-Host " [MACRO] INICIANDO A INSTALACAO DO $DisplayName" -ForegroundColor Magenta
     Write-Host " ATENCAO: TIRE AS MAOS DO TECLADO E DO MOUSE AGORA!" -ForegroundColor Red
-    Write-Host " O SCRIPT VAI APERTAR 'TAB' E 'ENTER' SOZINHO!" -ForegroundColor Red
     Write-Host "========================================================`n" -ForegroundColor Red
     
     try {
         Start-Process -FilePath $Path
         $wshell = New-Object -ComObject WScript.Shell
         
-        # Espera o instalador pensar e extrair
+        # Espera o instalador abrir
         Start-Sleep -Seconds 5 
         
         $timeout = 0
-        # Timeout de ~4 minutos para não ficar preso para sempre
+        $primeiroClique = $true
+        
         while ($timeout -lt 240) {
             $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             
             if ($activeWindow -and -not [string]::IsNullOrWhiteSpace($activeWindow.MainWindowTitle)) {
-                # Puxa a janela à forca para a frente
+                # Foca na janela
                 $wshell.AppActivate($activeWindow.MainWindowTitle) | Out-Null
                 Start-Sleep -Milliseconds 400
                 
-                # A sua solucao: Envia o TAB para focar no botao
-                $wshell.SendKeys('{TAB}')
-                Start-Sleep -Milliseconds 200
+                # Se for a primeira vez que acha a janela, dá o TAB
+                if ($primeiroClique) {
+                    $wshell.SendKeys('{TAB}')
+                    Start-Sleep -Milliseconds 200
+                    $primeiroClique = $false # Desliga o TAB para as proximas telas
+                }
                 
-                # E depois envia o ENTER para clicar
+                # Aperta ENTER (tanto na primeira quanto nas proximas)
                 $wshell.SendKeys('{ENTER}')
+                
             } else {
-                # Verifica se a janela realmente sumiu (instalacao acabou)
+                # Verifica se a instalacao acabou (janela sumiu)
                 Start-Sleep -Seconds 2
                 $activeWindowCheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' }
                 if (-not $activeWindowCheck) {
@@ -221,12 +225,12 @@ try {
     # -------------------------------------------------------------------------
     if ($instalarPDV) {
         Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV'
-        $installationResults.Add('A7 PDV: instalado (Macro TAB+ENTER)')
+        $installationResults.Add('A7 PDV: instalado (Macro)')
     }
     else { $installationResults.Add('A7 PDV: pulado') }
 
     Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
-    $installationResults.Add('A7 Retaguarda: instalado (Macro TAB+ENTER)')
+    $installationResults.Add('A7 Retaguarda: instalado (Macro)')
     
     Invoke-SilentInstaller -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
     $installationResults.Add('Notepad++: instalado')
