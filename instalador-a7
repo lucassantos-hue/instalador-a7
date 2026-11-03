@@ -95,10 +95,8 @@ function Test-InstallerFile {
         Write-Host "[+] Assinatura digital valida: $DisplayName" -ForegroundColor Green
     }
     elseif ($signature.Status -eq 'NotSigned') {
-        Write-Host "[!] $DisplayName nao possui assinatura digital. Origem: $((Get-Item $Path).Length) bytes." -ForegroundColor Yellow
-        if (-not (Read-YesNo "Deseja permitir a instalacao deste arquivo mesmo sem assinatura? (S/N)" $true)) {
-            throw "Instalacao de $DisplayName cancelada por falta de assinatura digital."
-        }
+        # Alterado para aceitar automaticamente arquivos sem assinatura
+        Write-Host "[!] $DisplayName nao possui assinatura digital. Origem: $((Get-Item $Path).Length) bytes. (Instalacao automatica permitida)" -ForegroundColor Yellow
     }
     else {
         throw "A verificacao de assinatura de $DisplayName retornou '$($signature.Status)'. Instalacao bloqueada por seguranca."
@@ -148,7 +146,6 @@ function Get-IPv4ForSummary {
 # -----------------------------------------------------------------------------
 # 1. CONTROLE DE ACESSO E ESCOLHA DO PDV
 # -----------------------------------------------------------------------------
-# Observacao: Base64 e apenas ofuscacao, nao e protecao real de senha.
 $senhaOculta = 'c3VwZXJ0dXg='
 $senhaCorreta = Get-DecodedString -Base64 $senhaOculta
 $senhaSegura = Read-Host 'Por favor, digite a senha de autorizacao' -AsSecureString
@@ -177,7 +174,6 @@ $printerMode = 'Nao configurada'
 $scriptFailed = $false
 
 try {
-    # Links originais preservados. Base64 nao substitui verificacao da origem.
     $urlA7PDV = Get-DecodedString 'aHR0cHM6Ly93d3cuZHJvcGJveC5jb20vc2NsL2ZpLzRhbzRpazR3aWZ1enk0Z3lmYmM5Yy9BN1BoYXJtYS1QRFYtMy4xMDQuMTEuMC5leGU/cmxrZXk9enV1Mzk4cjIxbXZ6amxlOTl1cGlseTRwaiZzdD1iZ252eDl5NSZkbD0x'
     $urlA7Retag = Get-DecodedString 'aHR0cHM6Ly9kb3dubG9hZC5hNy5uZXQuYnIvYXJxdWl2b3MvSW5zdGFsYWRvcl9BN1BoYXJtYS5leGU='
     $urlNotepad = Get-DecodedString 'aHR0cHM6Ly93d3cuZHJvcGJveC5jb20vc2NsL2ZpL3dvdm5jZHZiMnA4cnA5Mmw2anVkMC9ucHAuOC45LjYuMi5JbnN0YWxsZXIueDY0LmV4ZT9ybGtleT1zdjR1ejFoMmt0MWthcTlhcWY4enN1dHpjJnN0PXVpZDV3MHUwJmRsPTE='
@@ -207,7 +203,7 @@ try {
     $installationResults.Add('Notepad++: instalado')
 
     # -------------------------------------------------------------------------
-    # 4. CONFIGURACAO DOS ARQUIVOS .JVMARGS (SEM DUPLICAR PARAMETROS)
+    # 4. CONFIGURACAO DOS ARQUIVOS .JVMARGS
     # -------------------------------------------------------------------------
     Write-Host "`n=> Configurando arquivos .jvmargs..." -ForegroundColor Yellow
     $argumentosJvm = @(
@@ -240,7 +236,7 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 5. CONFIGURACAO DO PDV.PROPERTIES (COM BACKUP E VALIDACAO)
+    # 5. CONFIGURACAO DO PDV.PROPERTIES
     # -------------------------------------------------------------------------
     if ($instalarPDV -and (Read-YesNo "`nDeseja configurar o arquivo pdv.properties agora? (S/N)" $true)) {
         $serverIp = Read-Host 'Digite o IP IPv4 do servidor A7 (ex: 192.168.0.10)'
@@ -414,7 +410,7 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 7. ATALHOS E ICONES EMBUTIDOS
+    # 7. ATALHOS E ICONES (Baixando direto do GitHub)
     # -------------------------------------------------------------------------
     Write-Host "`n=> Criando atalhos e icones..." -ForegroundColor Yellow
     $desktop = [Environment]::GetFolderPath('Desktop')
@@ -445,49 +441,6 @@ try {
         }
     }
 
-    # Imagens embutidas em Base64
-    $b64Kb = 'iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAMAAADfSQ05AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAMAUExURQAAAExMTE1NTU5OTlBQUFJTUlNTU1RUVFVVVVZW' +
-             'VlhYWFlaWlpaWltbW1xcXF1dXV5eXl9fX2BgYGFhYWRkZGZlZmZmZmdnZ2hoaGlpaWpqamtra2xsbG1tbW5ubm9vb3BwcHFxcXJycnNzc3R0dHV1dXZ2dnd3d3h4eHl5' +
-             'eXp6ent7e3x8fH19fX5+fn9/f4CAgIGBgYKCgoODg4SEhIWFhYaGhoeHh4iIiImJiYqKiouLi4yMjI2NjY6Ojo+Pj5CQkJGRkZKSkpOTk5SUlJWVlZaWlpeXl5iYmJmZ' +
-             'mZqampubm5ycnJ2dnZ6enp+fn6CgoKGhoaKioqOjo6SkpKWlpaampqenp6ioqKmpqaqqqqurq6ysrK2tra6urq+vr7CwsLGxsbKysrOzs7S0tLW1tba2tre3t7i4uLm5' +
-             'ubq6uru7u7y8vL29vb6+vr+/v8DAwMHBwcLCwsPDw8TExMXFxcbGxsfHx8jIyMnJycrKysvLy8zMzM3Nzc7Ozs/Pz9DQ0NHR0dLS0tPT09TU1NXV1dbW1tfX19jY2NnZ' +
-             '2dra2tvb29zc3N3d3d7e3t/f3+Dg4OHh4eLi4uPj4+Tk5OXl5ebm5ufn5+jo6Onp6erq6uvr6+zs7O3t7e7u7u/v7/Dw8PHx8fLy8vPz8/T09PX19fb29vf39/j4+Pn5' +
-             '+fr6+vv7+/z8/P39/f7+/v///9371QAAAAFiS0dEAIgFHUgAAAAJcEhZcwAAFiUAABYlAUlSJPAAAAGASURBVHja7dzRUYNAEIXh2Z0d2IIV2IEduIItWIEV2IEV2IAL' +
-             '3gV5nJmcg2f534Q9m6s72dl3AQAAAAAAAAAAAAAAAAAAAHikT/fQ3Xn97p67O65e31V353V65p3zD97576d3+Z6n+V/e+c+9S8+/3F1x+f65zT36848k/9T/H/sN' +
-             '53+kP5D/n/uT3O/dG6n3+r+/89W5h8796uL+7Vp9/3/8d9zX3/iU/sP09x/d+36k3zP3n/5+1r8P/b9j7qfNf5H8O+d+pvvP/P087z1zP1/4d3ff53907/vP/53h' +
-             '7/35e8k94553T7hn3DPuGff8R7wX3fN+wPv8e2947113e617P3yX3r0nvO/d/bfe/Xv37u7f3v3bu3/vff3eu59719593rvW161vveP7r31/6fub3v/w+/d4' +
-             '7/vev7n3l737e9/5xnf+uPd56v3f2vvPfv9/P5/3qfV3+f7vfnj3N3i/4N917zfv/a33B7g31/j+X133f9lffn/v7vX3V3e/u7sAAAAAAAAAAAAAAAAAAAAAAIBH' +
-             '8w139K6X3Y8qRwAAAABJRU5ErkJggg=='
-
-    $b64Atendimento = 'iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAMAAADfSQ05AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAMAUExURQAAAAMDAwUFBAkKCgwMDQ8PDxERERMTExUVFRcX' +
-                      'FxgYGBoaGhwcHB4eHh8fHyAgICEhISIiIiQkJCYmJicnJygoKCkpKSoqKisrKywsLC0tLS4uLi8vLzAwMDExMTIyMjMzMzQ0NDU1NTY2Njc3Nzg4ODk5OTo6Ojs7Ozw8' +
-                      'PD09PT4+Pj8/P0BAQEFBQUJCQkNDQ0REREVFRUZGRkdHR0hISElJSUpKSktLS0xMTE1NTU5OTk9PT1BQUFFRUVJSUlNTU1RUVFVVVVZWVldXV1hYWFlZWVpaWltbW1xc' +
-                      'XF1dXV5eXl9fX2BgYGFhYWJiYmNjY2RkZGVlZWZmZmdnZ2hoaGlpaWpqamtra2xsbG1tbW5ubm9vb3BwcHFxcXJycnNzc3R0dHV1dXZ2dnd3d3h4eHl5eXp6ent7e3x8' +
-                      'fH19fX5+fn9/f4CAgIGBgYKCgoODg4SEhIWFhYaGhoeHh4iIiImJiYqKiouLi4yMjI2NjY6Ojo+Pj5CQkJGRkZKSkpOTk5SUlJWVlZaWlpeXl5iYmJmZmZqampubm5yc' +
-                      'nJ2dnZ6enp+fn6CgoKGhoaKioqOjo6SkpKWlpaampqenp6ioqKmpqaqqqqurq6ysrK2tra6urq+vr7CwsLGxsbKysrOzs7S0tLW1tba2tre3t7i4uLm5ubq6uru7u7y8' +
-                      'vL29vb6+vr+/v8DAwMHBwcLCwsPDw8TExMXFxcbGxsfHx8jIyMnJycrKysvLy8zMzM3Nzc7Ozs/Pz9DQ0NHR0dLS0tPT09TU1NXV1dbW1tfX19jY2NnZ2dra2tvb29zc' +
-                      '3N3d3d7e3t/f3+Dg4OHh4eLi4uPj4+Tk5OXl5ebm5ufn5+jo6Onp6erq6uvr6+zs7O3t7e7u7u/v7/Dw8PHx8fLy8vPz8/T09PX19fb29vf39/j4+Pn5+fr6+vv7+/z8' +
-                      '/P39/f7+/v///28kcgkAAAFiS0dEAIgFHUgAAAAJcEhZcwAAFiUAABYlAUlSJPAAAAGwSURBVHja7dzRccIwEAVQCQkQCQkQCQkQCQkQCQkQCQkQCQkQyfYMnv81k0' +
-                      '6y5e2q3VAAAAAAAAAAAAAAAAAAAMAn7343e7X3O/d93/3a93v3Z9+f/V33e/eb3uPde/6f3vO79/j3vj97r+99j/d4z2+t35179L+/v3vvvWvt3j/69e/v/n/v' +
-                      '3nvn/tX7/b1z/9rff3/35ffX3z/6ffn9o9/X33/2+7q7/36+9w59+d33e5/1/rV7v+/f33j3a3/75b3XWl97137f+1vf/b+9/7v373rn155d+/P3fP/w7uvvvfsd' +
-                      'vuv7vvdD3627d/22f183993v7rX353fv77z7/9713p/7vevf/u9373/3f+pff9f14O7d79+d+/v1d+/fX3b34K67p/d39/fvvtZ33//67qf72u6+ffu+fe/uff9P' +
-                      'd3+2u6/e/dz35+vd7927d3/27t2/d/fe795t795t7/7d/f+5d9+6d/fevXfv3t179+7dvb/p3t3d3d3d3d3d3d3d3d3f/AAeU6s03yVf6QAAAABJRU5ErkJggg=='
-
-    $b64Suporte = 'iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAMAAADfSQ05AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAMAUExURQAAAAMDAwUFBAkKCgwMDQ8PDxERERMTExUVFRcX' +
-                  'FxgYGBoaGhwcHB4eHh8fHyAgICEhISIiIiQkJCYmJicnJygoKCkpKSoqKisrKywsLC0tLS4uLi8vLzAwMDExMTIyMjMzMzQ0NDU1NTY2Njc3Nzg4ODk5OTo6Ojs7Ozw8' +
-                  'PD09PT4+Pj8/P0BAQEFBQUJCQkNDQ0REREVFRUZGRkdHR0hISElJSUpKSktLS0xMTE1NTU5OTk9PT1BQUFFRUVJSUlNTU1RUVFVVVVZWVldXV1hYWFlZWVpaWltbW1xc' +
-                  'XF1dXV5eXl9fX2BgYGFhYWJiYmNjY2RkZGVlZWZmZmdnZ2hoaGlpaWpqamtra2xsbG1tbW5ubm9vb3BwcHFxcXJycnNzc3R0dHV1dXZ2dnd3d3h4eHl5eXp6ent7e3x8' +
-                  'fH19fX5+fn9/f4CAgIGBgYKCgoODg4SEhIWFhYaGhoeHh4iIiImJiYqKiouLi4yMjI2NjY6Ojo+Pj5CQkJGRkZKSkpOTk5SUlJWVlZaWlpeXl5iYmJmZmZqampubm5yc' +
-                  'nJ2dnZ6enp+fn6CgoKGhoaKioqOjo6SkpKWlpaampqenp6ioqKmpqaqqqqurq6ysrK2tra6urq+vr7CwsLGxsbKysrOzs7S0tLW1tba2tre3t7i4uLm5ubq6uru7u7y8' +
-                  'vL29vb6+vr+/v8DAwMHBwcLCwsPDw8TExMXFxcbGxsfHx8jIyMnJycrKysvLy8zMzM3Nzc7Ozs/Pz9DQ0NHR0dLS0tPT09TU1NXV1dbW1tfX19jY2NnZ2dra2tvb29zc' +
-                  '3N3d3d7e3t/f3+Dg4OHh4eLi4uPj4+Tk5OXl5ebm5ufn5+jo6Onp6erq6uvr6+zs7O3t7e7u7u/v7/Dw8PHx8fLy8vPz8/T09PX19fb29vf39/j4+Pn5+fr6+vv7+/z8' +
-                  '/P39/f7+/v///28kcgkAAAFiS0dEAIgFHUgAAAAJcEhZcwAAFiUAABYlAUlSJPAAAAG3SURBVHja7dzRUcMwEAVQCQkQCQkQCQkQCQkQCQkQCQkQCQkQyffrPf9rtqsz' +
-                  'u2q1AAAAAAAAAAAAAAAAgNfufpuv1f7Z/dl77n6v1+ru+9xvdc/v3eN3d7/vPt7zW9/zvfd+3d33e9d73/s1d9f+zvfvvvf+/vbe7/3uvf/de3/3vv/+7t3f/7vf' +
-                  'v+v+6O+e/b27u7v/98f3fn/X/d7/++fX3P347/r9+/t7v+v9vv+7v39/1/2f+zN3r7/ff3/972vu/vzuv/5/1+7vvvu9/9r7/fdf/3/Xrvu9f/r1X7uuu3+/7vf3' +
-                  '3t979+vrv19396378e/e/Xv359fdffv/3n3/ffvf/f3+d9f/fe/vvfvevdfevf/e/bv7+/fevfduf/fu7737e+/e/bv7+r13d+/9rvv7995/6353d+/vvd/ee++/' +
-                  'd9f37+7d/f17737vrt979+7e/fv7vXv3t/d/+/r/e++///r7/Xuv9+/uvfe337/3/rvv/f3f+9/7v7t/7/fe/b//3v177/ffv/fvvbfuvd/f3d3d3d3d3d3d3d3d' +
-                  '3T/cAPn/aU1UeWpYAAAAAElFTkSuQmCC'
-
     $kbPng = Join-Path $iconFolder 'KB.png'
     $kbIco = Join-Path $iconFolder 'KB_48.ico'
     $chatPng = Join-Path $iconFolder 'Atendimento.png'
@@ -495,10 +448,12 @@ try {
     $suportePng = Join-Path $iconFolder 'Suporte.png'
     $suporteIco = Join-Path $iconFolder 'Suporte_48.ico'
 
+    $iconClient = New-Object System.Net.WebClient
     try {
-        [System.IO.File]::WriteAllBytes($kbPng, [System.Convert]::FromBase64String($b64Kb))
-        [System.IO.File]::WriteAllBytes($chatPng, [System.Convert]::FromBase64String($b64Atendimento))
-        [System.IO.File]::WriteAllBytes($suportePng, [System.Convert]::FromBase64String($b64Suporte))
+        # Baixa as imagens direto do seu repositorio no GitHub
+        $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png', $kbPng)
+        $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png', $chatPng)
+        $iconClient.DownloadFile('https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png', $suportePng)
 
         Convert-PngToIco -SourcePng $kbPng -DestinationIco $kbIco
         Convert-PngToIco -SourcePng $chatPng -DestinationIco $chatIco
@@ -507,14 +462,16 @@ try {
         Remove-Item -LiteralPath $kbPng, $chatPng, $suportePng -Force -ErrorAction SilentlyContinue
     }
     catch {
-        Write-Host "[!] Falha ao gerar icones personalizados: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host '[!] Os atalhos serao criados com o icone padrao do Windows.' -ForegroundColor Yellow
+        Write-Host "[!] Falha ao baixar ou gerar icones personalizados: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host '[!] Os atalhos serao criados com o icone padrao do Windows. Certifique-se de que as imagens estao no seu GitHub.' -ForegroundColor Yellow
     }
+    finally { $iconClient.Dispose() }
 
+    # Nomes dos atalhos atualizados
     $shortcuts = @(
-        @{ Name = 'Base de Conhecimento'; Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco },
-        @{ Name = 'Atendimento A7';       Url = 'https://chat.a7.net.br/';                    Icon = $chatIco },
-        @{ Name = 'A7 Suporte';           Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco }
+        @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco },
+        @{ Name = 'Atendimento Alpha7'; Url = 'https://chat.a7.net.br/';                    Icon = $chatIco },
+        @{ Name = 'Suporte Alpha7';     Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco }
     )
 
     foreach ($shortcut in $shortcuts) {
@@ -542,7 +499,6 @@ try {
         catch { Write-Host "[!] Nao foi possivel validar/renomear o atalho A7: $($_.Exception.Message)" -ForegroundColor Yellow }
     }
 
-    # Mantem o atalho do Alpha7 Suporte como link normal; nao desativa validacao SSL do Chrome.
     $ie4uinit = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
     if (Test-Path $ie4uinit) {
         Start-Process -FilePath $ie4uinit -ArgumentList '-ClearIconCache' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
@@ -573,7 +529,6 @@ if ($scriptFailed) {
 }
 else {
     if ($printerMode -eq 'Remota/terminal') {
-        # No terminal remoto, mantem a saida final enxuta conforme o fluxo proposto.
         Write-Host "`n[OK] Configuracao do terminal finalizada." -ForegroundColor Green
     }
     else {
