@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva (Arranque + 0.75s)
+# Instalador automatico A7 Pharma - Versao Definitiva (Macro 0.75s + Atalho Publico + Usuario Corrigido)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -283,7 +283,7 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 5. CONFIGURACAO DO PDV.PROPERTIES
+    # 5. CONFIGURACAO DO PDV.PROPERTIES (AGORA COM IMPRESSORA AUTOMATICA)
     # -------------------------------------------------------------------------
     if ($instalarPDV -and (Read-YesNo "`nDeseja configurar o arquivo pdv.properties agora? (S/N)" $true)) {
         $serverIp = Read-Host 'Digite o IP IPv4 do servidor A7 (ex: 192.168.0.10)'
@@ -354,14 +354,13 @@ try {
     try {
         $userName = 'printers'
         $userPass = 'printers'
+        $securePass = ConvertTo-SecureString $userPass -AsPlainText -Force
         
         if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
-            $securePass = ConvertTo-SecureString $userPass -AsPlainText -Force
-            Set-LocalUser -Name $userName -Password $securePass -PasswordNeverExpires $true
+            Set-LocalUser -Name $userName -Password $securePass -PasswordNeverExpires:$true
             Write-Host "[i] Usuario '$userName' ja existe. Senha atualizada." -ForegroundColor Yellow
         } else {
-            $securePass = ConvertTo-SecureString $userPass -AsPlainText -Force
-            New-LocalUser -Name $userName -Password $securePass -PasswordNeverExpires $true -FullName 'Printers' -Description 'Acesso de rede para compartilhamento' | Out-Null
+            New-LocalUser -Name $userName -Password $securePass -PasswordNeverExpires -FullName 'Printers' -Description 'Acesso de rede para compartilhamento' | Out-Null
             Write-Host "[+] Usuario '$userName' criado com sucesso." -ForegroundColor Green
         }
         
@@ -494,13 +493,23 @@ try {
         [System.IO.File]::WriteAllText($shortcutPath, $shortcutContent, [System.Text.Encoding]::ASCII)
     }
 
-    # Renomeia o atalho principal para A7Pharma Retaguarda
-    $shell = New-Object -ComObject WScript.Shell
-    $oldLnk = Join-Path $desktop 'A7Pharma.lnk'
-    $newLnk = Join-Path $desktop 'A7Pharma Retaguarda.lnk'
-    if (Test-Path -LiteralPath $oldLnk) {
-        if (Test-Path -LiteralPath $newLnk) { Remove-Item -LiteralPath $newLnk -Force -ErrorAction SilentlyContinue }
-        Rename-Item -LiteralPath $oldLnk -NewName 'A7Pharma Retaguarda.lnk' -Force
+    # Renomeia o atalho principal para A7Pharma Retaguarda (procurando no Public Desktop também)
+    $desktops = @(
+        [Environment]::GetFolderPath('Desktop'),
+        [Environment]::GetFolderPath('CommonDesktopDirectory')
+    )
+
+    foreach ($desk in $desktops) {
+        if (-not [string]::IsNullOrWhiteSpace($desk)) {
+            $oldLnk = Join-Path $desk 'A7Pharma.lnk'
+            $newLnk = Join-Path $desk 'A7Pharma Retaguarda.lnk'
+            
+            if (Test-Path -LiteralPath $oldLnk) {
+                if (Test-Path -LiteralPath $newLnk) { Remove-Item -LiteralPath $newLnk -Force -ErrorAction SilentlyContinue }
+                Rename-Item -LiteralPath $oldLnk -NewName 'A7Pharma Retaguarda.lnk' -Force
+                Write-Host "[+] Atalho 'A7Pharma' renomeado para 'A7Pharma Retaguarda'." -ForegroundColor Green
+            }
+        }
     }
     $installationResults.Add('Atalhos e icones: criados')
 
