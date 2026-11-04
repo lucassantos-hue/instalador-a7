@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva Completa (Spool + Credenciais Multiplas Remotas)
+# Instalador automatico A7 Pharma - Versao Definitiva Completa
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -107,7 +107,7 @@ function Invoke-SilentInstaller {
 }
 
 # -----------------------------------------------------------------------------
-# MACRO DE INSTALACAO (Rajada Longa + Spool Compartilhado)
+# MACRO DE INSTALACAO (10 rajadas + Espera de 2.5s)
 # -----------------------------------------------------------------------------
 function Invoke-MacroInstaller {
     param(
@@ -146,16 +146,16 @@ function Invoke-MacroInstaller {
         $wshell.SendKeys('{TAB}')
         Start-Sleep -Milliseconds 400
 
-        # 4. FASE 1: ARRANQUE RÁPIDO (15 cliques a 0.25s para garantir passagem das telas iniciais)
-        for ($i = 0; $i -lt 15; $i++) {
+        # 4. FASE 1: ARRANQUE RÁPIDO (10 cliques a 0.25s)
+        for ($i = 0; $i -lt 10; $i++) {
             $wshell.SendKeys('{ENTER}')
             Start-Sleep -Milliseconds 250
         }
 
-        # 5. FASE 2: ESPERA A 1.5s (Mais lenta para reduzir o barulho do Windows durante a copia)
+        # 5. FASE 2: ESPERA A 2.5s (Mais lenta para reduzir o barulho do Windows durante a copia)
         $contador = 0
         $janelaAberta = $true
-        while ($janelaAberta -and $contador -lt 400) { # Ate 10 minutos (400 ciclos de 1.5s)
+        while ($janelaAberta -and $contador -lt 240) { # Ate 10 minutos (240 ciclos de 2.5s)
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 
@@ -164,8 +164,8 @@ function Invoke-MacroInstaller {
                 $wshell.SendKeys('%c') # Alt + C (Concluir)
                 $wshell.SendKeys('%f') # Alt + F (Finish)
                 
-                # Pausa longa e silenciosa de 1,5s
-                Start-Sleep -Milliseconds 1500
+                # Pausa longa e silenciosa de 2,5s
+                Start-Sleep -Milliseconds 2500
             }
             else {
                 # Janela sumiu? Espera 2 segundos para ter a certeza absoluta
