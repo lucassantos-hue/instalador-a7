@@ -498,10 +498,11 @@ try {
     }
     catch {}
 
+    # Nova Ordem solicitada (Suporte -> Atendimento -> KB)
     $shortcuts = @(
-        @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco },
+        @{ Name = 'Suporte Alpha7';     Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco },
         @{ Name = 'Atendimento Alpha7'; Url = 'https://chat.a7.net.br/';                    Icon = $chatIco },
-        @{ Name = 'Suporte Alpha7';     Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco }
+        @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco }
     )
 
     foreach ($shortcut in $shortcuts) {
