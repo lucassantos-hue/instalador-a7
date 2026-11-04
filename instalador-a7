@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva (Macro 0.75s + Atalho Publico + Usuario Corrigido)
+# Instalador automatico A7 Pharma - Versao Definitiva Completa
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -107,7 +107,7 @@ function Invoke-SilentInstaller {
 }
 
 # -----------------------------------------------------------------------------
-# MACRO DE INSTALACAO (Dois Estágios)
+# MACRO DE INSTALACAO (Rajada Longa + Spool Compartilhado)
 # -----------------------------------------------------------------------------
 function Invoke-MacroInstaller {
     param(
@@ -146,16 +146,16 @@ function Invoke-MacroInstaller {
         $wshell.SendKeys('{TAB}')
         Start-Sleep -Milliseconds 400
 
-        # 4. FASE 1: ARRANQUE RÁPIDO (Avança as telas num piscar de olhos)
-        for ($i = 0; $i -lt 6; $i++) {
+        # 4. FASE 1: ARRANQUE RÁPIDO (15 cliques a 0.25s para garantir passagem das telas iniciais)
+        for ($i = 0; $i -lt 15; $i++) {
             $wshell.SendKeys('{ENTER}')
-            Start-Sleep -Milliseconds 300
+            Start-Sleep -Milliseconds 250
         }
 
-        # 5. FASE 2: ESPERA A 0,75s (Garante que a tela Concluir feche logo)
+        # 5. FASE 2: ESPERA A 1.5s (Mais lenta para reduzir o barulho do Windows durante a copia)
         $contador = 0
         $janelaAberta = $true
-        while ($janelaAberta -and $contador -lt 800) { # Ate 10 minutos (800 ciclos de 0.75s)
+        while ($janelaAberta -and $contador -lt 400) { # Ate 10 minutos (400 ciclos de 1.5s)
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 
@@ -164,8 +164,8 @@ function Invoke-MacroInstaller {
                 $wshell.SendKeys('%c') # Alt + C (Concluir)
                 $wshell.SendKeys('%f') # Alt + F (Finish)
                 
-                # Pausa de 0,75s
-                Start-Sleep -Milliseconds 750
+                # Pausa longa e silenciosa de 1,5s
+                Start-Sleep -Milliseconds 1500
             }
             else {
                 # Janela sumiu? Espera 2 segundos para ter a certeza absoluta
@@ -346,10 +346,10 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 6. CRIACAO DE USUARIO (PRINTERS)
+    # 6. CRIACAO DE USUARIO (PRINTERS) E COMPARTILHAMENTO DE SPOOL
     # -------------------------------------------------------------------------
     Write-Host "`n============================================================" -ForegroundColor Cyan
-    Write-Host ' CRIACAO DE USUARIO (IMPRESSORA)' -ForegroundColor Cyan
+    Write-Host ' USUARIO (IMPRESSORA) E COMPARTILHAMENTO SPOOL' -ForegroundColor Cyan
     Write-Host "=> Criando usuario 'printers'..." -ForegroundColor Yellow
     try {
         $userName = 'printers'
@@ -372,10 +372,30 @@ try {
             Write-Host "[+] Usuario '$userName' promovido a Administrador." -ForegroundColor Green
         }
         $installationResults.Add("Usuario de rede: '$userName' configurado (Administrador)")
+        
+        # --- COMPARTILHAMENTO DA PASTA SPOOL ---
+        Write-Host "=> Compartilhando a pasta 'spool'..." -ForegroundColor Yellow
+        $spoolPath = "C:\Windows\System32\spool"
+        $shareName = "spool"
+        
+        # Localiza os nomes corretos do sistema (Todos/Everyone e REDE/Network) independentemente do idioma
+        $everyoneAcc = (New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0')).Translate([System.Security.Principal.NTAccount]).Value
+        $networkAcc  = (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-2')).Translate([System.Security.Principal.NTAccount]).Value
+        
+        # Remove o compartilhamento antigo se existir
+        Remove-SmbShare -Name $shareName -Force -ErrorAction SilentlyContinue
+        
+        # Cria o compartilhamento com Controle Total para Todos e REDE
+        New-SmbShare -Name $shareName -Path $spoolPath -FullAccess $everyoneAcc, $networkAcc | Out-Null
+        
+        Write-Host "[+] Pasta 'spool' compartilhada com sucesso (Controle Total para Todos e REDE)." -ForegroundColor Green
+        $installationResults.Add("Spool: Compartilhado com Controle Total")
+        # ---------------------------------------
+
     }
     catch {
-        Write-Host "[!] Aviso: Nao foi possivel configurar o usuario: $($_.Exception.Message)" -ForegroundColor Red
-        $installationResults.Add("Usuario de rede: Falha na criacao")
+        Write-Host "[!] Aviso: Nao foi possivel configurar o usuario ou spool: $($_.Exception.Message)" -ForegroundColor Red
+        $installationResults.Add("Spool/Usuario: Falha na criacao ($($_.Exception.Message))")
     }
 
     # -------------------------------------------------------------------------
