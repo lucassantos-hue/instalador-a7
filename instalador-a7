@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva (Foco Unico)
+# Instalador automatico A7 Pharma - Versao Definitiva (ENTER a cada 0.25s)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -107,7 +107,7 @@ function Invoke-SilentInstaller {
 }
 
 # -----------------------------------------------------------------------------
-# MACRO DE INSTALACAO (Logica Simulada e Corrigida)
+# MACRO DE INSTALACAO
 # -----------------------------------------------------------------------------
 function Invoke-MacroInstaller {
     param(
@@ -120,7 +120,7 @@ function Invoke-MacroInstaller {
         Start-Process -FilePath $Path
         $wshell = New-Object -ComObject WScript.Shell
         
-        # 1. Aguarda a janela inicial abrir
+        # 1. Aguarda a janela inicial abrir (ate 30s)
         $windowFound = $false
         $attempts = 0
         $targetTitle = ''
@@ -138,28 +138,25 @@ function Invoke-MacroInstaller {
             throw "A janela de instalacao de $DisplayName nao foi localizada."
         }
 
-        # 2. FOCO ÚNICO: Chama a janela para frente apenas uma vez para não resetar controles
+        # 2. Foco Unico na tela do instalador
         $wshell.AppActivate($targetTitle) | Out-Null
-        Start-Sleep -Seconds 1 # Espera a tela renderizar completamente
+        Start-Sleep -Seconds 1
 
-        # 3. 1 TAB inicial (conforme você pediu originalmente para ajustar o seletor)
+        # 3. 1 TAB inicial para cravar selecao
         $wshell.SendKeys('{TAB}')
         Start-Sleep -Milliseconds 500
 
-        # 4. Loop Limpo: Manda ENTER a cada 1 segundo. Nao usa AppActivate aqui dentro.
+        # 4. Loop Ultrarrapido: Manda ENTER a cada 0.25 segundos
         $contador = 0
         $janelaAberta = $true
-        while ($janelaAberta -and $contador -lt 600) {
+        while ($janelaAberta -and $contador -lt 2500) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
-                
-                # Apenas aperta ENTER. Se estiver copiando arquivos, o ENTER cai no vazio em seguranca.
                 $wshell.SendKeys('{ENTER}')
-                Start-Sleep -Seconds 1
-                
+                Start-Sleep -Milliseconds 250
             }
             else {
-                # Janela sumiu? Espera 2 segundos para confirmar se ela nao piscou de tela
+                # Janela sumiu? Espera 2 segundos para confirmar se encerrou de vez
                 Start-Sleep -Seconds 2
                 $recheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
                 if (-not $recheck) {
