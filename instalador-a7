@@ -260,7 +260,7 @@ try {
     # 4. CONFIGURACAO DOS ARQUIVOS .JVMARGS
     # -------------------------------------------------------------------------
     Write-Host "`n=> Configurando arquivos .jvmargs..." -ForegroundColor Yellow
-    $argumentosJvm = @('-DdesabilitaAlertaNFCeRejeitada')
+    $argumentosJvm = @('-DdesabilitaAlertaLogsDeEventosNaoLidos')
     $arquivosJvmArgs = @()
     if (Test-Path 'C:\Alpha7') {
         $arquivosJvmArgs = @(Get-ChildItem -Path 'C:\Alpha7' -Filter '*.jvmargs' -Recurse -File -ErrorAction SilentlyContinue)
