@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva (Macro + Impressora + Usuario)
+# Instalador automatico A7 Pharma - Versao Definitiva (Macro Silenciosa)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -107,7 +107,7 @@ function Invoke-SilentInstaller {
 }
 
 # -----------------------------------------------------------------------------
-# MACRO DE INSTALACAO (Com Atalhos Restaurados)
+# MACRO DE INSTALACAO (Com Silenciador)
 # -----------------------------------------------------------------------------
 function Invoke-MacroInstaller {
     param(
@@ -146,22 +146,25 @@ function Invoke-MacroInstaller {
         $wshell.SendKeys('{TAB}')
         Start-Sleep -Milliseconds 500
 
-        # 4. Loop Ultrarrapido: ENTER e atalhos globais
+        # 4. Loop Silencioso: Atalhos globais sem apito
         $contador = 0
         $janelaAberta = $true
         while ($janelaAberta -and $contador -lt 2500) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 
-                # ENTER puro (aciona o que estiver focado)
-                $wshell.SendKeys('{ENTER}')
-                
-                # Atalhos forçam o clique nos botões mesmo se o foco estiver preso numa caixinha!
+                # Atalhos forçam o clique silenciosamente (nao fazem a maquina apitar)
                 $wshell.SendKeys('%a') # Alt + A (Avançar)
                 $wshell.SendKeys('%p') # Alt + P (Próximo)
+                $wshell.SendKeys('%n') # Alt + N (Next)
                 $wshell.SendKeys('%c') # Alt + C (Concluir / Complete)
                 $wshell.SendKeys('%f') # Alt + F (Finish / Finalizar)
                 $wshell.SendKeys('%t') # Alt + T (Terminar)
+                
+                # Apenas a cada 2 segundos envia 1 ENTER de garantia (evita a metralhadora de dings)
+                if ($contador % 8 -eq 0) {
+                    $wshell.SendKeys('{ENTER}')
+                }
                 
                 Start-Sleep -Milliseconds 250
             }
@@ -297,11 +300,11 @@ try {
         $caixa = Read-Host 'Digite o numero do caixa (ex: 1, 2, 3)'
         if ($caixa -notmatch '^\d{1,3}$') { throw 'Numero do caixa invalido.' }
 
-        # --- A MAJICA ACONTECE AQUI: Impressora padrao cravada! ---
+        # --- Impressora padrao cravada! ---
         $ipImpressora = 'localhost'
         $compImpressora = 'CX'
         Write-Host "[i] Impressora configurada automaticamente para: \\$ipImpressora\$compImpressora" -ForegroundColor Cyan
-        # ----------------------------------------------------------
+        # ----------------------------------
 
         $propertiesPath = 'C:\Alpha7\A7Pharma-PDV\pdv.properties'
         if (Test-Path -LiteralPath $propertiesPath) {
