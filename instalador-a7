@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva Completa
+# Instalador automatico A7 Pharma - Versao Definitiva Completa (Spool + Credenciais Remotas)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -399,7 +399,7 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 7. CONFIGURACAO DE IMPRESSORA NO WINDOWS
+    # 7. CONFIGURACAO DE IMPRESSORA NO WINDOWS (Com Injeção de Credenciais)
     # -------------------------------------------------------------------------
     try {
         Write-Host "`n============================================================" -ForegroundColor Cyan
@@ -425,10 +425,67 @@ try {
         elseif ($printerChoice -match '^0$') {
             $printerMode = 'Remota/terminal'
             $remoteHost = Read-Host 'Digite o IP/nome do computador que compartilha a impressora'
+            
+            Write-Host "=> Injetando credenciais do usuario 'printers' para $remoteHost..." -ForegroundColor Yellow
+            # Salva a credencial no cofre do Windows
+            cmdkey.exe /add:$remoteHost /user:"$remoteHost\printers" /pass:"printers" | Out-Null
+            Start-Sleep -Seconds 1
+
             $uncPath = "\\$remoteHost\CX"
-            Add-Printer -ConnectionName $uncPath
-            Write-Host "[+] Conexao adicionada: $uncPath" -ForegroundColor Green
-            $installationResults.Add("Impressora remota: $uncPath conectada")
+            $conectado = $false
+            
+            Write-Host "=> Tentando conectar automaticamente em $uncPath..." -ForegroundColor Yellow
+            try {
+                Add-Printer -ConnectionName $uncPath -ErrorAction Stop
+                Write-Host "[+] Conexao adicionada com sucesso: $uncPath" -ForegroundColor Green
+                $installationResults.Add("Impressora remota: $uncPath conectada")
+                $conectado = $true
+            }
+            catch {
+                Write-Host "[!] Compartilhamento 'CX' nao encontrado ou inacessivel." -ForegroundColor Yellow
+            }
+
+            if (-not $conectado) {
+                Write-Host "=> Buscando outras impressoras compartilhadas em $remoteHost..." -ForegroundColor Cyan
+                try {
+                    $printersRemotas = Get-Printer -ComputerName $remoteHost -ErrorAction Stop | Where-Object { $_.Shared -eq $true }
+                    
+                    if ($printersRemotas.Count -gt 0) {
+                        Write-Host "`nImpressoras encontradas:" -ForegroundColor White
+                        for ($i = 0; $i -lt $printersRemotas.Count; $i++) {
+                            $sName = $printersRemotas[$i].ShareName
+                            if (-not $sName) { $sName = $printersRemotas[$i].Name }
+                            Write-Host ("[{0}] {1} (Share: {2})" -f ($i + 1), $printersRemotas[$i].Name, $sName)
+                        }
+                        $selection = Read-Host "Digite o numero da impressora para conectar (ou 'N' para pular)"
+                        
+                        if ($selection -match '^\d+$' -and [int]$selection -gt 0 -and [int]$selection -le $printersRemotas.Count) {
+                            $selectedShare = $printersRemotas[[int]$selection - 1].ShareName
+                            if (-not $selectedShare) { $selectedShare = $printersRemotas[[int]$selection - 1].Name }
+                            $customUnc = "\\$remoteHost\$selectedShare"
+                            
+                            Add-Printer -ConnectionName $customUnc -ErrorAction Stop
+                            Write-Host "[+] Conexao adicionada: $customUnc" -ForegroundColor Green
+                            $installationResults.Add("Impressora remota: $customUnc conectada")
+                        } else {
+                            Write-Host "[i] Configuracao pulada pelo usuario." -ForegroundColor Yellow
+                            $printerMode = 'Pulada'
+                            $installationResults.Add('Impressora remota: pulada pelo usuario')
+                        }
+                    } else {
+                        Write-Host "[-] Nenhuma impressora compartilhada foi encontrada em $remoteHost." -ForegroundColor Red
+                        Write-Host "[i] Pulando a configuracao da impressora fiscal." -ForegroundColor Yellow
+                        $printerMode = 'Pulada'
+                        $installationResults.Add('Impressora remota: nenhuma encontrada no host')
+                    }
+                }
+                catch {
+                    Write-Host "[-] Nao foi possivel listar as impressoras de $remoteHost (Acesso Negado ou PC Desligado)." -ForegroundColor Red
+                    Write-Host "[i] Pulando a configuracao da impressora fiscal." -ForegroundColor Yellow
+                    $printerMode = 'Falha/Pulada'
+                    $installationResults.Add('Impressora remota: falha de acesso ao host')
+                }
+            }
         }
         else {
             $printerMode = 'Pulada'
@@ -498,7 +555,7 @@ try {
     }
     catch {}
 
-    # Nova Ordem solicitada (Suporte -> Atendimento -> KB)
+    # Ordem: Suporte -> Atendimento -> KB
     $shortcuts = @(
         @{ Name = 'Suporte Alpha7';     Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco },
         @{ Name = 'Atendimento Alpha7'; Url = 'https://chat.a7.net.br/';                    Icon = $chatIco },
