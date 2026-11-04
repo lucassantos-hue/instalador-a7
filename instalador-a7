@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada (GitHub Releases + Macro Desengasgada)
+# Instalador automatico A7 Pharma - Versao Definitiva (Foco Unico)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -106,7 +106,9 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# Macro com temporizacao limpa (solta a fila de mensagens e destrava o ENTER)
+# -----------------------------------------------------------------------------
+# MACRO DE INSTALACAO (Logica Simulada e Corrigida)
+# -----------------------------------------------------------------------------
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -118,7 +120,7 @@ function Invoke-MacroInstaller {
         Start-Process -FilePath $Path
         $wshell = New-Object -ComObject WScript.Shell
         
-        # 1. Localiza a janela do instalador
+        # 1. Aguarda a janela inicial abrir
         $windowFound = $false
         $attempts = 0
         $targetTitle = ''
@@ -136,27 +138,28 @@ function Invoke-MacroInstaller {
             throw "A janela de instalacao de $DisplayName nao foi localizada."
         }
 
-        # 2. Foco garantido e envio isolado do TAB
+        # 2. FOCO ÚNICO: Chama a janela para frente apenas uma vez para não resetar controles
         $wshell.AppActivate($targetTitle) | Out-Null
-        Start-Sleep -Milliseconds 800
-        $wshell.SendKeys('{TAB}')
-        
-        # Intervalo crucial de 1s para o Windows soltar a tecla TAB e focar o botao
-        Start-Sleep -Milliseconds 1000
+        Start-Sleep -Seconds 1 # Espera a tela renderizar completamente
 
-        # 3. Dispara ENTER a cada 1s de forma espacada e limpa
+        # 3. 1 TAB inicial (conforme você pediu originalmente para ajustar o seletor)
+        $wshell.SendKeys('{TAB}')
+        Start-Sleep -Milliseconds 500
+
+        # 4. Loop Limpo: Manda ENTER a cada 1 segundo. Nao usa AppActivate aqui dentro.
         $contador = 0
         $janelaAberta = $true
         while ($janelaAberta -and $contador -lt 600) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
-                $wshell.AppActivate($win.MainWindowTitle) | Out-Null
-                Start-Sleep -Milliseconds 200
+                
+                # Apenas aperta ENTER. Se estiver copiando arquivos, o ENTER cai no vazio em seguranca.
                 $wshell.SendKeys('{ENTER}')
-                Start-Sleep -Milliseconds 800
+                Start-Sleep -Seconds 1
+                
             }
             else {
-                # Aguarda 2 segundos para confirmar encerramento definitivo
+                # Janela sumiu? Espera 2 segundos para confirmar se ela nao piscou de tela
                 Start-Sleep -Seconds 2
                 $recheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
                 if (-not $recheck) {
