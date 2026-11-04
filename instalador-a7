@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Impressora Localhost CX automatica
+# Instalador automatico A7 Pharma - Versao Definitiva (Macro + Impressora + Usuario)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -345,7 +345,43 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 6. CONFIGURACAO DE IMPRESSORA NO WINDOWS
+    # 6. CRIACAO DE USUARIO (PRINTERS)
+    # -------------------------------------------------------------------------
+    Write-Host "`n============================================================" -ForegroundColor Cyan
+    Write-Host ' CRIACAO DE USUARIO (IMPRESSORA)' -ForegroundColor Cyan
+    Write-Host "=> Criando usuario 'printers'..." -ForegroundColor Yellow
+    try {
+        $userName = 'printers'
+        $userPass = 'printers'
+        
+        # Cria ou atualiza o usuario
+        if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
+            $securePass = ConvertTo-SecureString $userPass -AsPlainText -Force
+            Set-LocalUser -Name $userName -Password $securePass -PasswordNeverExpires $true
+            Write-Host "[i] Usuario '$userName' ja existe. Senha atualizada." -ForegroundColor Yellow
+        } else {
+            $securePass = ConvertTo-SecureString $userPass -AsPlainText -Force
+            New-LocalUser -Name $userName -Password $securePass -PasswordNeverExpires $true -FullName 'Printers' -Description 'Acesso de rede para compartilhamento' | Out-Null
+            Write-Host "[+] Usuario '$userName' criado com sucesso." -ForegroundColor Green
+        }
+        
+        # Adiciona ao grupo Administradores via SID (S-1-5-32-544) para funcionar em qualquer idioma
+        $adminGroup = (Get-LocalGroup -SID 'S-1-5-32-544').Name
+        $isMember = Get-LocalGroupMember -Group $adminGroup -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "\\$userName$" -or $_.Name -eq $userName }
+        
+        if (-not $isMember) {
+            Add-LocalGroupMember -Group $adminGroup -Member $userName
+            Write-Host "[+] Usuario '$userName' promovido a Administrador." -ForegroundColor Green
+        }
+        $installationResults.Add("Usuario de rede: '$userName' configurado (Administrador)")
+    }
+    catch {
+        Write-Host "[!] Aviso: Nao foi possivel configurar o usuario: $($_.Exception.Message)" -ForegroundColor Red
+        $installationResults.Add("Usuario de rede: Falha na criacao")
+    }
+
+    # -------------------------------------------------------------------------
+    # 7. CONFIGURACAO DE IMPRESSORA NO WINDOWS
     # -------------------------------------------------------------------------
     try {
         Write-Host "`n============================================================" -ForegroundColor Cyan
@@ -387,7 +423,7 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # 7. ATALHOS E ICONES
+    # 8. ATALHOS E ICONES
     # -------------------------------------------------------------------------
     Write-Host "`n=> Criando atalhos e icones..." -ForegroundColor Yellow
     $desktop = [Environment]::GetFolderPath('Desktop')
@@ -483,7 +519,7 @@ finally {
 }
 
 # -----------------------------------------------------------------------------
-# 8. RESUMO FINAL
+# 9. RESUMO FINAL
 # -----------------------------------------------------------------------------
 if ($scriptFailed) {
     Write-Host "`n============================================================" -ForegroundColor Red
