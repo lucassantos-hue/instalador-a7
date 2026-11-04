@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - versao consolidada (GitHub Releases + Macro de Janela)
+# Instalador automatico A7 Pharma - versao consolidada (GitHub Releases + Macro Desengasgada)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -87,7 +87,7 @@ function Download-Installer {
     $oldProgress = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
     try {
-        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -ErrorAction Stop
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -UserAgent "Mozilla/5.0" -ErrorAction Stop
     }
     catch {
         $ProgressPreference = $oldProgress
@@ -106,7 +106,7 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# Macro baseada na janela ativa (independe do processo-pai do extrator)
+# Macro com temporizacao limpa (solta a fila de mensagens e destrava o ENTER)
 function Invoke-MacroInstaller {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -118,7 +118,7 @@ function Invoke-MacroInstaller {
         Start-Process -FilePath $Path
         $wshell = New-Object -ComObject WScript.Shell
         
-        # 1. Aguarda a janela inicial abrir
+        # 1. Localiza a janela do instalador
         $windowFound = $false
         $attempts = 0
         $targetTitle = ''
@@ -136,24 +136,27 @@ function Invoke-MacroInstaller {
             throw "A janela de instalacao de $DisplayName nao foi localizada."
         }
 
-        # 2. Garante foco e envia 1 TAB inicial
+        # 2. Foco garantido e envio isolado do TAB
         $wshell.AppActivate($targetTitle) | Out-Null
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 800
         $wshell.SendKeys('{TAB}')
-        Start-Sleep -Milliseconds 400
+        
+        # Intervalo crucial de 1s para o Windows soltar a tecla TAB e focar o botao
+        Start-Sleep -Milliseconds 1000
 
-        # 3. Dispara ENTER a cada 0.5s enquanto a janela existir na tela (ate 1200 ciclos / 10 min)
+        # 3. Dispara ENTER a cada 1s de forma espacada e limpa
         $contador = 0
         $janelaAberta = $true
-        while ($janelaAberta -and $contador -lt 1200) {
+        while ($janelaAberta -and $contador -lt 600) {
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 $wshell.AppActivate($win.MainWindowTitle) | Out-Null
+                Start-Sleep -Milliseconds 200
                 $wshell.SendKeys('{ENTER}')
-                Start-Sleep -Milliseconds 500
+                Start-Sleep -Milliseconds 800
             }
             else {
-                # Aguarda 2 segundos para checar se a janela fechou de vez ou se apenas alternou de tela
+                # Aguarda 2 segundos para confirmar encerramento definitivo
                 Start-Sleep -Seconds 2
                 $recheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
                 if (-not $recheck) {
