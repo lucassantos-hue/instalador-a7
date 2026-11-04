@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva Completa (Spool condicional)
+# Instalador automatico A7 Pharma - Versao Definitiva Completa (Spool condicional + Separadores Visuais)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -331,7 +331,10 @@ try {
             $printerMode = 'Local/servidor'
             
             # --- SO CRIA O USUARIO E SPOOL SE FOR IMPRESSORA LOCAL ---
-            Write-Host "`n=> Configurando maquina como SERVIDOR de Impressao..." -ForegroundColor Yellow
+            Write-Host "`n============================================================" -ForegroundColor Cyan
+            Write-Host ' USUARIO (IMPRESSORA) E COMPARTILHAMENTO SPOOL' -ForegroundColor Cyan
+            Write-Host '============================================================' -ForegroundColor Cyan
+            Write-Host "=> Configurando maquina como SERVIDOR de Impressao..." -ForegroundColor Yellow
             try {
                 $userName = 'printers'
                 $userPass = 'printers'
@@ -369,7 +372,10 @@ try {
                 $installationResults.Add("Spool/Usuario: Falha ($($_.Exception.Message))")
             }
 
-            # Agora segue a escolha da impressora
+            # Agora segue a escolha da impressora com o separador visual!
+            Write-Host "`n------------------------------------------------------------" -ForegroundColor Cyan
+            Write-Host " SELECIONE A IMPRESSORA PARA COMPARTILHAR (CX)" -ForegroundColor Cyan
+            Write-Host "------------------------------------------------------------" -ForegroundColor Cyan
             $printers = @(Get-Printer | Sort-Object Name)
             if ($printers.Count -eq 0) { throw 'Nenhuma impressora instalada.' }
             for ($i = 0; $i -lt $printers.Count; $i++) {
