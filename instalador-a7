@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Instalador automatico A7 Pharma - Versao Definitiva Completa
+# Instalador automatico A7 Pharma - Versao Definitiva Completa (Roleta de Teclas Anti-Barulho)
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -107,7 +107,7 @@ function Invoke-SilentInstaller {
 }
 
 # -----------------------------------------------------------------------------
-# MACRO DE INSTALACAO (10 rajadas + Espera de 2.5s)
+# MACRO DE INSTALACAO (10 rajadas + Roleta 2.5s)
 # -----------------------------------------------------------------------------
 function Invoke-MacroInstaller {
     param(
@@ -152,17 +152,21 @@ function Invoke-MacroInstaller {
             Start-Sleep -Milliseconds 250
         }
 
-        # 5. FASE 2: ESPERA A 2.5s (Mais lenta para reduzir o barulho do Windows durante a copia)
+        # 5. FASE 2: ESPERA A 2.5s (Rotacao de teclas para matar o buffer de dings do Windows)
         $contador = 0
         $janelaAberta = $true
         while ($janelaAberta -and $contador -lt 240) { # Ate 10 minutos (240 ciclos de 2.5s)
             $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
             if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
                 
-                # Envia o ENTER e atalhos de conclusão
-                $wshell.SendKeys('{ENTER}')
-                $wshell.SendKeys('%c') # Alt + C (Concluir)
-                $wshell.SendKeys('%f') # Alt + F (Finish)
+                # ROTACAO DE TECLAS (manda só uma por ciclo para nao encavalar sons)
+                if ($contador % 3 -eq 0) {
+                    $wshell.SendKeys('{ENTER}')
+                } elseif ($contador % 3 -eq 1) {
+                    $wshell.SendKeys('%c') # Alt + C (Concluir)
+                } else {
+                    $wshell.SendKeys('%f') # Alt + F (Finish)
+                }
                 
                 # Pausa longa e silenciosa de 2,5s
                 Start-Sleep -Milliseconds 2500
