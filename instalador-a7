@@ -217,7 +217,7 @@ $scriptFailed = $false
 
 try {
     $urlA7PDV   = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma-PDV.3.104.11.0.exe'
-    $urlA7Retag = 'https://download.a7.net.br/arquivos/Instalador_A7Pharma.exe'
+    $urlA7Retag = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma.3.104.11.0.1.exe'
     $urlNotepad = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/npp.8.9.8.1.Installer.x64.exe'
 
     Write-Host "`n=> Baixando instaladores..." -ForegroundColor Yellow
