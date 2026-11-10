@@ -1,6 +1,6 @@
 #requires -Version 5.1
 # Instalador automatico A7 Pharma - Versao Definitiva Completa (Spool condicional + Separadores Visuais)
-$ScriptVersion = "1.1.1"
+$ScriptVersion = "1.1.2"
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -278,8 +278,10 @@ try {
         $escolhaServidor = Read-Host 'Escolha 1 ou 2'
         
         $portaWs = '8080'
+        $protocolo = 'http'
         if ($escolhaServidor -match '^2$') {
             $portaWs = '8443'
+            $protocolo = 'https'
         }
 
         $serverIp = Read-Host 'Digite o IP IPv4 do servidor A7 (ex: 192.168.0.10)'
@@ -307,7 +309,7 @@ try {
 
             for ($i = 0; $i -lt $lines.Length; $i++) {
                 if ($lines[$i] -match '^\s*servidor\.webServicesURL=') {
-                    if ($serverIpInformado) { $lines[$i] = "servidor.webServicesURL=https://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
+                    if ($serverIpInformado) { $lines[$i] = "servidor.webServicesURL=${protocolo}://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
                     $foundUrl = $true
                 }
                 elseif ($lines[$i] -match '^\s*#?\s*servidor\.numeroCaixa=') { $lines[$i] = "servidor.numeroCaixa=$caixa"; $foundCaixa = $true }
@@ -318,7 +320,7 @@ try {
                 }
             }
 
-            if ($serverIpInformado -and -not $foundUrl) { $lines += "servidor.webServicesURL=https://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
+            if ($serverIpInformado -and -not $foundUrl) { $lines += "servidor.webServicesURL=${protocolo}://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
             if (-not $foundCaixa) { $lines += "servidor.numeroCaixa=$caixa" }
             if (-not $foundTipo) { $lines += 'pdv.tipoDocumentoFiscal=NFCE' }
             if (-not $foundModelo) { $lines += 'impressora.modelo=epson' }
