@@ -1,6 +1,6 @@
 #requires -Version 5.1
 # Instalador automatico A7 Pharma - Versao Definitiva Completa (Spool condicional + Separadores Visuais)
-$ScriptVersion = "1.1.5"
+$ScriptVersion = "1.1.10"
 
 $ErrorActionPreference = 'Stop'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -107,73 +107,6 @@ function Invoke-SilentInstaller {
     Write-Host "[+] $DisplayName instalado." -ForegroundColor Green
 }
 
-# -----------------------------------------------------------------------------
-# MACRO DE INSTALACAO
-# -----------------------------------------------------------------------------
-function Invoke-MacroInstaller {
-    param(
-        [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string]$DisplayName
-    )
-    Write-Host "=> Instalando $DisplayName..." -ForegroundColor Yellow
-    
-    try {
-        Start-Process -FilePath $Path
-        $wshell = New-Object -ComObject WScript.Shell
-        
-        $windowFound = $false
-        $attempts = 0
-        $targetTitle = ''
-        while (-not $windowFound -and $attempts -lt 60) {
-            Start-Sleep -Milliseconds 500
-            $activeWindow = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
-            if ($activeWindow -and -not [string]::IsNullOrWhiteSpace($activeWindow.MainWindowTitle)) {
-                $targetTitle = $activeWindow.MainWindowTitle
-                $windowFound = $true
-            }
-            $attempts++
-        }
-
-        if (-not $windowFound) { throw "A janela de instalacao de $DisplayName nao foi localizada." }
-
-        $wshell.AppActivate($targetTitle) | Out-Null
-        Start-Sleep -Seconds 1
-        $wshell.SendKeys('{TAB}')
-        Start-Sleep -Milliseconds 400
-
-        for ($i = 0; $i -lt 10; $i++) {
-            $wshell.SendKeys('{ENTER}')
-            Start-Sleep -Milliseconds 250
-        }
-
-        $contador = 0
-        $janelaAberta = $true
-        while ($janelaAberta -and $contador -lt 240) {
-            $win = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
-            if ($win -and -not [string]::IsNullOrWhiteSpace($win.MainWindowTitle)) {
-                if ($contador % 3 -eq 0) {
-                    $wshell.SendKeys('{ENTER}')
-                } elseif ($contador % 3 -eq 1) {
-                    $wshell.SendKeys('%c')
-                } else {
-                    $wshell.SendKeys('%f')
-                }
-                Start-Sleep -Milliseconds 2500
-            }
-            else {
-                Start-Sleep -Seconds 2
-                $recheck = Get-Process | Where-Object { $_.MainWindowTitle -match 'A7Pharma' } | Select-Object -First 1
-                if (-not $recheck) { $janelaAberta = $false }
-            }
-            $contador++
-        }
-        Write-Host "[+] $DisplayName instalado com sucesso." -ForegroundColor Green
-    }
-    catch {
-        throw "Erro na instalacao de $DisplayName : $($_.Exception.Message)"
-    }
-}
-
 function Get-IPv4ForSummary {
     try {
         $configs = Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' -and $_.IPv4Address -and $_.IPv4DefaultGateway }
@@ -203,139 +136,167 @@ if ($senhaDigitada -cne 'supertux') {
 }
 Write-Host '[+] Senha aceita.' -ForegroundColor Green
 
-$instalarPDV = Read-YesNo 'Deseja instalar o A7Pharma PDV nesta maquina? (S/N)' $true
+$instalarPDV = $false
+$pularInstalacoes = $false
+while ($true) {
+    $ans = Read-Host 'Deseja instalar o A7Pharma PDV nesta maquina? (S=Sim / N=Nao / I=Ir direto p/ Impressora)'
+    if ([string]::IsNullOrWhiteSpace($ans)) { $instalarPDV = $true; break }
+    if ($ans -match '^(s|sim)$') { $instalarPDV = $true; break }
+    if ($ans -match '^(n|nao|não)$') { $instalarPDV = $false; break }
+    if ($ans -match '^(i|ir|impressora)$') { $pularInstalacoes = $true; break }
+    Write-Host 'Digite S para Sim, N para Nao, ou I para ir direto para a Impressora.' -ForegroundColor Yellow
+}
+
 if ($instalarPDV) { Write-Host '[+] A instalacao do PDV foi selecionada.' -ForegroundColor Green }
+elseif ($pularInstalacoes) { Write-Host '[i] MODO EXPRESSO: Pulando direto para a configuracao de impressora...' -ForegroundColor Cyan }
 else { Write-Host '[i] O PDV sera pulado.' -ForegroundColor Yellow }
 
 # -----------------------------------------------------------------------------
 # 2. DOWNLOAD DOS INSTALADORES
 # -----------------------------------------------------------------------------
 $tempDir = Join-Path 'C:\TempInstaladores' ("A7_" + (Get-Date -Format 'yyyyMMdd_HHmmss'))
-New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+if (-not $pularInstalacoes) { New-Item -ItemType Directory -Force -Path $tempDir | Out-Null }
 $installationResults = New-Object System.Collections.Generic.List[string]
 $printerMode = 'Nao configurada'
+$caixaResumo = 'Nao configurado / Mantido original'
 $scriptFailed = $false
 
 try {
-    $urlA7PDV   = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma-PDV.3.104.11.0.exe'
-    $urlA7Retag = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma.3.104.11.0.1.exe'
-    $urlNotepad = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/npp.8.9.8.1.Installer.x64.exe'
+    if (-not $pularInstalacoes) {
+        $urlA7PDV   = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma-PDV.3.104.11.0.exe'
+        $urlA7Retag = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/A7Pharma.3.104.11.0.1.exe'
+        $urlNotepad = 'https://github.com/lucassantos-hue/instalador-a7/releases/download/v1.0/npp.8.9.8.1.Installer.x64.exe'
 
-    Write-Host "`n=> Baixando instaladores..." -ForegroundColor Yellow
-    if ($instalarPDV) { Download-Installer -Url $urlA7PDV -Destination (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV' }
-    Download-Installer -Url $urlA7Retag -Destination (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
-    Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
+        Write-Host "`n=> Baixando instaladores..." -ForegroundColor Yellow
+        if ($instalarPDV) { Download-Installer -Url $urlA7PDV -Destination (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV' }
+        Download-Installer -Url $urlA7Retag -Destination (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
+        Download-Installer -Url $urlNotepad -Destination (Join-Path $tempDir 'npp.exe') -DisplayName 'Notepad++'
 
-    # -------------------------------------------------------------------------
-    # 3. INSTALACAO DOS PROGRAMAS
-    # -------------------------------------------------------------------------
-    if ($instalarPDV) {
-        Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7pdv.exe') -DisplayName 'A7 PDV'
-        $installationResults.Add('A7 PDV: instalado')
-    } else { $installationResults.Add('A7 PDV: pulado') }
+        # -------------------------------------------------------------------------
+        # 3. INSTALACAO DOS PROGRAMAS
+        # -------------------------------------------------------------------------
+        if ($instalarPDV) {
+            Invoke-SilentInstaller -Path (Join-Path $tempDir 'a7pdv.exe') -Arguments '' -DisplayName 'A7 PDV'
+            $installationResults.Add('A7 PDV: instalado')
+        } else { $installationResults.Add('A7 PDV: pulado') }
 
-    Invoke-MacroInstaller -Path (Join-Path $tempDir 'a7retag.exe') -DisplayName 'A7 Retaguarda'
-    $installationResults.Add('A7 Retaguarda: instalado')
-    
-    Invoke-SilentInstaller -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
-    $installationResults.Add('Notepad++: instalado')
-
-    # -------------------------------------------------------------------------
-    # 4. CONFIGURACAO DOS ARQUIVOS .JVMARGS
-    # -------------------------------------------------------------------------
-    Write-Host "`n=> Configurando arquivos .jvmargs..." -ForegroundColor Yellow
-    $argumentosJvm = @('-DdesabilitaAlertaLogsDeEventosNaoLidos')
-    $arquivosJvmArgs = @()
-    if (Test-Path 'C:\Alpha7') { $arquivosJvmArgs = @(Get-ChildItem -Path 'C:\Alpha7' -Filter '*.jvmargs' -Recurse -File -ErrorAction SilentlyContinue) }
-    
-    if ($arquivosJvmArgs.Count -gt 0) {
-        foreach ($arquivo in $arquivosJvmArgs) {
-            $texto = [System.IO.File]::ReadAllText($arquivo.FullName)
-            $linhas = @($texto -split "`r?`n")
-            $faltantes = @($argumentosJvm | Where-Object { $parametro = $_; -not ($linhas | Where-Object { $_.Trim() -eq $parametro }) })
-            if ($faltantes.Count -gt 0) {
-                Backup-File -Path $arquivo.FullName | Out-Null
-                $prefixo = ''
-                if ($texto.Length -gt 0 -and -not $texto.EndsWith("`n")) { $prefixo = [Environment]::NewLine }
-                $appendText = $prefixo + ($faltantes -join [Environment]::NewLine) + [Environment]::NewLine
-                [System.IO.File]::AppendAllText($arquivo.FullName, $appendText, [System.Text.Encoding]::Default)
-            }
-            Write-Host "[+] .jvmargs verificado: $($arquivo.FullName)" -ForegroundColor Green
-        }
-        $installationResults.Add("JVMARGS: $($arquivosJvmArgs.Count) arquivo(s) verificado(s)")
-    }
-
-    # -------------------------------------------------------------------------
-    # 5. CONFIGURACAO DO PDV.PROPERTIES
-    # -------------------------------------------------------------------------
-    if ($instalarPDV -and (Read-YesNo "`nDeseja configurar o arquivo pdv.properties agora? (S/N)" $true)) {
+        Invoke-SilentInstaller -Path (Join-Path $tempDir 'a7retag.exe') -Arguments '' -DisplayName 'A7 Retaguarda'
+        $installationResults.Add('A7 Retaguarda: instalado')
         
-        Write-Host "`n------------------------------------------------------------" -ForegroundColor Cyan
-        Write-Host " TIPO DE SERVIDOR" -ForegroundColor Cyan
-        Write-Host "------------------------------------------------------------" -ForegroundColor Cyan
-        Write-Host " 1 - Fisico (Porta 8080)" -ForegroundColor White
-        Write-Host " 2 - Nuvem  (Porta 8443)" -ForegroundColor White
-        $escolhaServidor = Read-Host 'Escolha 1 ou 2'
+        Invoke-SilentInstaller -Path (Join-Path $tempDir 'npp.exe') -Arguments '/S' -DisplayName 'Notepad++'
+        $installationResults.Add('Notepad++: instalado')
+
+        # -------------------------------------------------------------------------
+        # 4. CONFIGURACAO DOS ARQUIVOS .JVMARGS
+        # -------------------------------------------------------------------------
+        Write-Host "`n=> Configurando arquivos .jvmargs..." -ForegroundColor Yellow
+        $argumentosJvm = @('-DdesabilitaAlertaLogsDeEventosNaoLidos')
+        $arquivosJvmArgs = @()
+        if (Test-Path 'C:\Alpha7') { $arquivosJvmArgs = @(Get-ChildItem -Path 'C:\Alpha7' -Filter '*.jvmargs' -Recurse -File -ErrorAction SilentlyContinue) }
         
-        $portaWs = '8080'
-        $protocolo = 'http'
-        if ($escolhaServidor -match '^2$') {
-            $portaWs = '8443'
-            $protocolo = 'https'
-        }
-
-        $serverIp = Read-Host 'Digite o IP IPv4 do servidor A7 (ex: 192.168.0.10)'
-        $serverIpInformado = -not [string]::IsNullOrWhiteSpace($serverIp)
-
-        if ($serverIpInformado) {
-            $parsedIp = $null
-            if (-not [System.Net.IPAddress]::TryParse($serverIp, [ref]$parsedIp) -or $parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
-                throw 'IP do servidor invalido. Informe um endereco IPv4 valido.'
-            }
-        }
-
-        $caixa = Read-Host 'Digite o numero do caixa (ex: 1, 2, 3)'
-        $caixaInformado = -not [string]::IsNullOrWhiteSpace($caixa)
-        
-        if ($caixaInformado -and $caixa -notmatch '^\d{1,3}$') { 
-            throw 'Numero do caixa invalido. Digite apenas numeros.' 
-        }
-
-        $ipImpressora = 'localhost'
-        $compImpressora = 'CX'
-        Write-Host "[i] Impressora configurada automaticamente para: \\$ipImpressora\$compImpressora" -ForegroundColor Cyan
-
-        $propertiesPath = 'C:\Alpha7\A7Pharma-PDV\pdv.properties'
-        if (Test-Path -LiteralPath $propertiesPath) {
-            Backup-File -Path $propertiesPath | Out-Null
-            $lines = [System.IO.File]::ReadAllLines($propertiesPath)
-            $foundUrl = $false; $foundCaixa = $false; $foundTipo = $false; $foundModelo = $false; $foundEndereco = $false
-
-            for ($i = 0; $i -lt $lines.Length; $i++) {
-                if ($lines[$i] -match '^\s*servidor\.webServicesURL=') {
-                    if ($serverIpInformado) { $lines[$i] = "servidor.webServicesURL=${protocolo}://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
-                    $foundUrl = $true
+        if ($arquivosJvmArgs.Count -gt 0) {
+            foreach ($arquivo in $arquivosJvmArgs) {
+                $texto = [System.IO.File]::ReadAllText($arquivo.FullName)
+                $linhas = @($texto -split "`r?`n")
+                $faltantes = @($argumentosJvm | Where-Object { $parametro = $_; -not ($linhas | Where-Object { $_.Trim() -eq $parametro }) })
+                if ($faltantes.Count -gt 0) {
+                    Backup-File -Path $arquivo.FullName | Out-Null
+                    $prefixo = ''
+                    if ($texto.Length -gt 0 -and -not $texto.EndsWith("`n")) { $prefixo = [Environment]::NewLine }
+                    $appendText = $prefixo + ($faltantes -join [Environment]::NewLine) + [Environment]::NewLine
+                    [System.IO.File]::AppendAllText($arquivo.FullName, $appendText, [System.Text.Encoding]::Default)
                 }
-                elseif ($lines[$i] -match '^\s*#?\s*servidor\.numeroCaixa=') { 
-                    if ($caixaInformado) { $lines[$i] = "servidor.numeroCaixa=$caixa" }
-                    $foundCaixa = $true 
-                }
-                elseif ($lines[$i] -match '^\s*#\s*pdv\.tipoDocumentoFiscal=NFCE') { $lines[$i] = 'pdv.tipoDocumentoFiscal=NFCE'; $foundTipo = $true }
-                elseif ($lines[$i] -match '^\s*#\s*impressora\.modelo=epson') { $lines[$i] = 'impressora.modelo=epson'; $foundModelo = $true }
-                elseif ($lines[$i] -match '^\s*#\s*impressora\.endereco=.*ENDERECO_IP_MAQUINA.*' -or $lines[$i] -match '^\s*impressora\.endereco=') {
-                    $lines[$i] = ('impressora.endereco=\\\\{0}\\{1}' -f $ipImpressora, $compImpressora); $foundEndereco = $true
+                Write-Host "[+] .jvmargs verificado: $($arquivo.FullName)" -ForegroundColor Green
+            }
+            $installationResults.Add("JVMARGS: $($arquivosJvmArgs.Count) arquivo(s) verificado(s)")
+        }
+
+        # -------------------------------------------------------------------------
+        # 5. CONFIGURACAO DO PDV.PROPERTIES
+        # -------------------------------------------------------------------------
+        if ($instalarPDV -and (Read-YesNo "`nDeseja configurar o arquivo pdv.properties agora? (S/N)" $true)) {
+            
+            Write-Host "`n------------------------------------------------------------" -ForegroundColor Cyan
+            Write-Host " TIPO DE SERVIDOR" -ForegroundColor Cyan
+            Write-Host "------------------------------------------------------------" -ForegroundColor Cyan
+            Write-Host " 1 - Fisico (Porta 8080)" -ForegroundColor White
+            Write-Host " 2 - Nuvem  (Porta 8443)" -ForegroundColor White
+            $escolhaServidor = Read-Host 'Escolha 1 ou 2'
+            
+            $portaWs = '8080'
+            $protocolo = 'http'
+            if ($escolhaServidor -match '^2$') {
+                $portaWs = '8443'
+                $protocolo = 'https'
+            }
+
+            $serverIp = Read-Host 'Digite o IP IPv4 do servidor A7 (ex: 192.168.0.10) [Enter para pular]'
+            $serverIpInformado = -not [string]::IsNullOrWhiteSpace($serverIp)
+
+            if ($serverIpInformado) {
+                $parsedIp = $null
+                if (-not [System.Net.IPAddress]::TryParse($serverIp, [ref]$parsedIp) -or $parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+                    throw 'IP do servidor invalido. Informe um endereco IPv4 valido.'
                 }
             }
 
-            if ($serverIpInformado -and -not $foundUrl) { $lines += "servidor.webServicesURL=${protocolo}://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
-            if ($caixaInformado -and -not $foundCaixa) { $lines += "servidor.numeroCaixa=$caixa" }
-            if (-not $foundTipo) { $lines += 'pdv.tipoDocumentoFiscal=NFCE' }
-            if (-not $foundModelo) { $lines += 'impressora.modelo=epson' }
-            if (-not $foundEndereco) { $lines += ('impressora.endereco=\\\\{0}\\{1}' -f $ipImpressora, $compImpressora) }
+            $caixa = Read-Host 'Digite o numero do caixa (ex: 1, 2, 3) [Enter para pular]'
+            $caixaInformado = -not [string]::IsNullOrWhiteSpace($caixa)
+            
+            if ($caixaInformado) {
+                if ($caixa -notmatch '^\d{1,3}$') { throw 'Numero do caixa invalido. Digite apenas numeros.' }
+                $caixaResumo = $caixa
+            }
 
-            [System.IO.File]::WriteAllLines($propertiesPath, $lines, [System.Text.UTF8Encoding]::new($false))
-            Write-Host '[+] pdv.properties atualizado com sucesso.' -ForegroundColor Green
-            $installationResults.Add('pdv.properties: configurado (CX local automatica)')
+            $isBalcaoCaixa = Read-YesNo 'Este terminal sera usado como Balcao e Caixa Juntos? (S/N) [Enter para pular]' $true
+
+            $ipImpressora = 'localhost'
+            $compImpressora = 'CX'
+            Write-Host "[i] Impressora pre-configurada para: \\$ipImpressora\$compImpressora" -ForegroundColor Cyan
+
+            $propertiesPath = 'C:\Alpha7\A7Pharma-PDV\pdv.properties'
+            if (Test-Path -LiteralPath $propertiesPath) {
+                Backup-File -Path $propertiesPath | Out-Null
+                $lines = [System.IO.File]::ReadAllLines($propertiesPath)
+                $foundUrl = $false; $foundCaixa = $false; $foundTipo = $false; $foundModelo = $false; $foundEndereco = $false
+                $foundWsPorta = $false; $foundWsHabilitar = $false
+
+                for ($i = 0; $i -lt $lines.Length; $i++) {
+                    if ($lines[$i] -match '^\s*servidor\.webServicesURL=') {
+                        if ($serverIpInformado) { $lines[$i] = "servidor.webServicesURL=${protocolo}://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
+                        $foundUrl = $true
+                    }
+                    elseif ($lines[$i] -match '^\s*#?\s*servidor\.numeroCaixa=') { 
+                        if ($caixaInformado) { $lines[$i] = "servidor.numeroCaixa=$caixa" }
+                        $foundCaixa = $true 
+                    }
+                    elseif ($lines[$i] -match '^\s*#\s*pdv\.tipoDocumentoFiscal=NFCE') { $lines[$i] = 'pdv.tipoDocumentoFiscal=NFCE'; $foundTipo = $true }
+                    elseif ($lines[$i] -match '^\s*#\s*impressora\.modelo=epson') { $lines[$i] = 'impressora.modelo=epson'; $foundModelo = $true }
+                    elseif ($lines[$i] -match '^\s*#\s*impressora\.endereco=.*ENDERECO_IP_MAQUINA.*' -or $lines[$i] -match '^\s*impressora\.endereco=') {
+                        $lines[$i] = ('impressora.endereco=\\\\{0}\\{1}' -f $ipImpressora, $compImpressora); $foundEndereco = $true
+                    }
+                    elseif ($isBalcaoCaixa -and $lines[$i] -match '^\s*#?\s*pdv\.webServiceLocal\.porta=') {
+                        $lines[$i] = 'pdv.webServiceLocal.porta=8087'
+                        $foundWsPorta = $true
+                    }
+                    elseif ($isBalcaoCaixa -and $lines[$i] -match '^\s*#?\s*pdv\.webServiceLocal\.habilitar=') {
+                        $lines[$i] = 'pdv.webServiceLocal.habilitar=sim'
+                        $foundWsHabilitar = $true
+                    }
+                }
+
+                if ($serverIpInformado -and -not $foundUrl) { $lines += "servidor.webServicesURL=${protocolo}://${serverIp}:${portaWs}/chinchila-chinchila-ejb-core/PDVWebServices?wsdl" }
+                if ($caixaInformado -and -not $foundCaixa) { $lines += "servidor.numeroCaixa=$caixa" }
+                if (-not $foundTipo) { $lines += 'pdv.tipoDocumentoFiscal=NFCE' }
+                if (-not $foundModelo) { $lines += 'impressora.modelo=epson' }
+                if (-not $foundEndereco) { $lines += ('impressora.endereco=\\\\{0}\\{1}' -f $ipImpressora, $compImpressora) }
+                if ($isBalcaoCaixa -and -not $foundWsPorta) { $lines += 'pdv.webServiceLocal.porta=8087' }
+                if ($isBalcaoCaixa -and -not $foundWsHabilitar) { $lines += 'pdv.webServiceLocal.habilitar=sim' }
+
+                [System.IO.File]::WriteAllLines($propertiesPath, $lines, [System.Text.UTF8Encoding]::new($false))
+                Write-Host '[+] pdv.properties atualizado com sucesso.' -ForegroundColor Green
+                $installationResults.Add('pdv.properties: configurado (CX local automatica)')
+            }
         }
     }
 
@@ -345,10 +306,21 @@ try {
     try {
         Write-Host "`n============================================================" -ForegroundColor Cyan
         Write-Host ' CONFIGURACAO DE IMPRESSORA' -ForegroundColor Cyan
-        Write-Host ' 1 - Impressora fisica/local nesta maquina' -ForegroundColor White
-        Write-Host ' 0 - Impressora(s) compartilhada(s) em outro computador (terminal)' -ForegroundColor White
-        Write-Host ' N - Pular configuracao de impressora' -ForegroundColor White
-        $printerChoice = Read-Host 'Escolha 1, 0 ou N'
+        
+        if ($pularInstalacoes) {
+            if (Test-Path 'C:\Alpha7\A7Pharma-PDV\pdv.properties') {
+                Write-Host "[i] pdv.properties detectado! Iniciando configuracao de impressora LOCAL..." -ForegroundColor Cyan
+                $printerChoice = '1'
+            } else {
+                Write-Host "[i] pdv.properties NAO detectado! Iniciando mapeamento de REDE..." -ForegroundColor Yellow
+                $printerChoice = '0'
+            }
+        } else {
+            Write-Host ' 1 - Impressora fisica/local nesta maquina' -ForegroundColor White
+            Write-Host ' 0 - Impressora(s) compartilhada(s) em outro computador (terminal)' -ForegroundColor White
+            Write-Host ' N - Pular configuracao de impressora' -ForegroundColor White
+            $printerChoice = Read-Host 'Escolha 1, 0 ou N'
+        }
 
         if ($printerChoice -match '^1$') {
             $printerMode = 'Local/servidor'
@@ -396,7 +368,7 @@ try {
             }
 
             Write-Host "`n------------------------------------------------------------" -ForegroundColor Cyan
-            Write-Host " SELECIONE A IMPRESSORA PARA COMPARTILHAR (CX)" -ForegroundColor Cyan
+            Write-Host " SELECIONE A IMPRESSORA PARA COMPARTILHAR" -ForegroundColor Cyan
             Write-Host "------------------------------------------------------------" -ForegroundColor Cyan
             $printers = @(Get-Printer | Sort-Object Name)
             if ($printers.Count -eq 0) { throw 'Nenhuma impressora instalada.' }
@@ -405,9 +377,42 @@ try {
             }
             $selection = Read-Host 'Digite o numero da impressora'
             $selectedPrinter = $printers[[int]$selection - 1]
-            Set-Printer -Name $selectedPrinter.Name -Shared $true -ShareName 'CX'
-            Write-Host "[+] Impressora '$($selectedPrinter.Name)' compartilhada como CX." -ForegroundColor Green
-            $installationResults.Add("Impressora local: $($selectedPrinter.Name) (CX)")
+            
+            $finalShareName = 'CX'
+            
+            if ($selectedPrinter.Shared -and -not [string]::IsNullOrWhiteSpace($selectedPrinter.ShareName)) {
+                $currentShare = $selectedPrinter.ShareName
+                if ($currentShare -cne 'CX') {
+                    Write-Host "`n[!] A impressora '$($selectedPrinter.Name)' ja esta compartilhada como '$currentShare'." -ForegroundColor Yellow
+                    $mudarCx = Read-YesNo "Deseja alterar o nome para 'CX'? (S=Mudar para CX / N=Manter '$currentShare')" $true
+                    if ($mudarCx) {
+                        Set-Printer -Name $selectedPrinter.Name -Shared $true -ShareName 'CX'
+                        Write-Host "[+] Compartilhamento alterado para CX." -ForegroundColor Green
+                    } else {
+                        $finalShareName = $currentShare
+                        Write-Host "[i] Compartilhamento mantido como '$finalShareName'." -ForegroundColor Cyan
+                        
+                        $propPath = 'C:\Alpha7\A7Pharma-PDV\pdv.properties'
+                        if (Test-Path -LiteralPath $propPath) {
+                            $propLines = [System.IO.File]::ReadAllLines($propPath)
+                            for ($idx = 0; $idx -lt $propLines.Length; $idx++) {
+                                if ($propLines[$idx] -match '^\s*impressora\.endereco=') {
+                                    $propLines[$idx] = ('impressora.endereco=\\\\{0}\\{1}' -f 'localhost', $finalShareName)
+                                }
+                            }
+                            [System.IO.File]::WriteAllLines($propPath, $propLines, [System.Text.UTF8Encoding]::new($false))
+                            Write-Host "[+] pdv.properties corrigido automaticamente para usar \\localhost\$finalShareName" -ForegroundColor Green
+                        }
+                    }
+                } else {
+                    Write-Host "[+] A impressora ja esta compartilhada como CX. Nenhuma alteracao necessaria." -ForegroundColor Green
+                }
+            } else {
+                Set-Printer -Name $selectedPrinter.Name -Shared $true -ShareName 'CX'
+                Write-Host "[+] Impressora '$($selectedPrinter.Name)' compartilhada como CX." -ForegroundColor Green
+            }
+
+            $installationResults.Add("Impressora local: $($selectedPrinter.Name) ($finalShareName)")
         }
         elseif ($printerChoice -match '^0$') {
             $printerMode = 'Remotas mapeadas'
@@ -478,86 +483,88 @@ try {
     # -------------------------------------------------------------------------
     # 7. ATALHOS E ICONES
     # -------------------------------------------------------------------------
-    Write-Host "`n=> Criando atalhos e icones..." -ForegroundColor Yellow
-    $desktop = [Environment]::GetFolderPath('Desktop')
-    $iconFolder = 'C:\ProgramData\A7Pharma\Icones'
-    New-Item -ItemType Directory -Force -Path $iconFolder | Out-Null
-    Add-Type -AssemblyName System.Drawing
+    if (-not $pularInstalacoes) {
+        Write-Host "`n=> Criando atalhos e icones..." -ForegroundColor Yellow
+        $desktop = [Environment]::GetFolderPath('Desktop')
+        $iconFolder = 'C:\ProgramData\A7Pharma\Icones'
+        New-Item -ItemType Directory -Force -Path $iconFolder | Out-Null
+        Add-Type -AssemblyName System.Drawing
 
-    function Convert-PngToIco {
-        param([string]$SourcePng, [string]$DestinationIco)
-        $srcImg = [System.Drawing.Image]::FromFile($SourcePng)
-        $bmp = New-Object System.Drawing.Bitmap 128, 128, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $ms = New-Object System.IO.MemoryStream
-        $fs = $null
-        try {
-            $g.Clear([System.Drawing.Color]::Transparent)
-            $g.InterpolationMode  = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-            $g.DrawImage($srcImg, 0, 0, 128, 128)
-            $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-            $pngBytes = $ms.ToArray()
-            $fs = [System.IO.File]::Open($DestinationIco, [System.IO.FileMode]::Create)
-            $bw = New-Object System.IO.BinaryWriter($fs)
-            $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]1)
-            $bw.Write([byte]128); $bw.Write([byte]128); $bw.Write([byte]0); $bw.Write([byte]0)
-            $bw.Write([uint16]1); $bw.Write([uint16]32)
-            $bw.Write([uint32]$pngBytes.Length); $bw.Write([uint32]22)
-            $bw.Write($pngBytes)
-            $bw.Flush()
-        }
-        finally {
-            if ($ms) { $ms.Dispose() }
-            if ($fs) { $fs.Dispose() }
-            if ($g) { $g.Dispose() }
-            if ($bmp) { $bmp.Dispose() }
-            if ($srcImg) { $srcImg.Dispose() }
-        }
-    }
-
-    $kbIco = Join-Path $iconFolder 'KB_128.ico'
-    $chatIco = Join-Path $iconFolder 'Atendimento_128.ico'
-    $suporteIco = Join-Path $iconFolder 'Suporte_128.ico'
-
-    try {
-        $p1 = Join-Path $iconFolder 'kb.png'; $p2 = Join-Path $iconFolder 'at.png'; $p3 = Join-Path $iconFolder 'sp.png'
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png' -OutFile $p1 -UseBasicParsing -ErrorAction SilentlyContinue
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png' -OutFile $p2 -UseBasicParsing -ErrorAction SilentlyContinue
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png' -OutFile $p3 -UseBasicParsing -ErrorAction SilentlyContinue
-        Convert-PngToIco -SourcePng $p1 -DestinationIco $kbIco
-        Convert-PngToIco -SourcePng $p2 -DestinationIco $chatIco
-        Convert-PngToIco -SourcePng $p3 -DestinationIco $suporteIco
-        Remove-Item -LiteralPath $p1, $p2, $p3 -Force -ErrorAction SilentlyContinue
-    }
-    catch {}
-
-    $shortcuts = @(
-        @{ Name = 'Suporte Alpha7';     Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco },
-        @{ Name = 'Atendimento Alpha7'; Url = 'https://chat.a7.net.br/';                    Icon = $chatIco },
-        @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco }
-    )
-
-    foreach ($shortcut in $shortcuts) {
-        $shortcutPath = Join-Path $desktop ($shortcut.Name + '.url')
-        $shortcutContent = "[InternetShortcut]`r`nURL=$($shortcut.Url)`r`n"
-        if (Test-Path -LiteralPath $shortcut.Icon) { $shortcutContent += "IconFile=$($shortcut.Icon)`r`nIconIndex=0`r`n" }
-        [System.IO.File]::WriteAllText($shortcutPath, $shortcutContent, [System.Text.Encoding]::ASCII)
-    }
-
-    $desktops = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'))
-    foreach ($desk in $desktops) {
-        if (-not [string]::IsNullOrWhiteSpace($desk)) {
-            $oldLnk = Join-Path $desk 'A7Pharma.lnk'
-            $newLnk = Join-Path $desk 'A7Pharma Retaguarda.lnk'
-            if (Test-Path -LiteralPath $oldLnk) {
-                if (Test-Path -LiteralPath $newLnk) { Remove-Item -LiteralPath $newLnk -Force -ErrorAction SilentlyContinue }
-                Rename-Item -LiteralPath $oldLnk -NewName 'A7Pharma Retaguarda.lnk' -Force
-                Write-Host "[+] Atalho 'A7Pharma' renomeado para 'A7Pharma Retaguarda'." -ForegroundColor Green
+        function Convert-PngToIco {
+            param([string]$SourcePng, [string]$DestinationIco)
+            $srcImg = [System.Drawing.Image]::FromFile($SourcePng)
+            $bmp = New-Object System.Drawing.Bitmap 128, 128, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $ms = New-Object System.IO.MemoryStream
+            $fs = $null
+            try {
+                $g.Clear([System.Drawing.Color]::Transparent)
+                $g.InterpolationMode  = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.DrawImage($srcImg, 0, 0, 128, 128)
+                $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+                $pngBytes = $ms.ToArray()
+                $fs = [System.IO.File]::Open($DestinationIco, [System.IO.FileMode]::Create)
+                $bw = New-Object System.IO.BinaryWriter($fs)
+                $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]1)
+                $bw.Write([byte]128); $bw.Write([byte]128); $bw.Write([byte]0); $bw.Write([byte]0)
+                $bw.Write([uint16]1); $bw.Write([uint16]32)
+                $bw.Write([uint32]$pngBytes.Length); $bw.Write([uint32]22)
+                $bw.Write($pngBytes)
+                $bw.Flush()
+            }
+            finally {
+                if ($ms) { $ms.Dispose() }
+                if ($fs) { $fs.Dispose() }
+                if ($g) { $g.Dispose() }
+                if ($bmp) { $bmp.Dispose() }
+                if ($srcImg) { $srcImg.Dispose() }
             }
         }
+
+        $kbIco = Join-Path $iconFolder 'KB_128.ico'
+        $chatIco = Join-Path $iconFolder 'Atendimento_128.ico'
+        $suporteIco = Join-Path $iconFolder 'Suporte_128.ico'
+
+        try {
+            $p1 = Join-Path $iconFolder 'kb.png'; $p2 = Join-Path $iconFolder 'at.png'; $p3 = Join-Path $iconFolder 'sp.png'
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/kb.png' -OutFile $p1 -UseBasicParsing -ErrorAction SilentlyContinue
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/atendimento.png' -OutFile $p2 -UseBasicParsing -ErrorAction SilentlyContinue
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/lucassantos-hue/instalador-a7/main/suporte.png' -OutFile $p3 -UseBasicParsing -ErrorAction SilentlyContinue
+            Convert-PngToIco -SourcePng $p1 -DestinationIco $kbIco
+            Convert-PngToIco -SourcePng $p2 -DestinationIco $chatIco
+            Convert-PngToIco -SourcePng $p3 -DestinationIco $suporteIco
+            Remove-Item -LiteralPath $p1, $p2, $p3 -Force -ErrorAction SilentlyContinue
+        }
+        catch {}
+
+        $shortcuts = @(
+            @{ Name = 'Suporte Alpha7';     Url = 'http://suporte.a7.net.br/';                 Icon = $suporteIco },
+            @{ Name = 'Atendimento Alpha7'; Url = 'https://chat.a7.net.br/';                    Icon = $chatIco },
+            @{ Name = 'KB Alpha7';          Url = 'https://kb.a7.net.br/P%C3%A1gina_principal'; Icon = $kbIco }
+        )
+
+        foreach ($shortcut in $shortcuts) {
+            $shortcutPath = Join-Path $desktop ($shortcut.Name + '.url')
+            $shortcutContent = "[InternetShortcut]`r`nURL=$($shortcut.Url)`r`n"
+            if (Test-Path -LiteralPath $shortcut.Icon) { $shortcutContent += "IconFile=$($shortcut.Icon)`r`nIconIndex=0`r`n" }
+            [System.IO.File]::WriteAllText($shortcutPath, $shortcutContent, [System.Text.Encoding]::ASCII)
+        }
+
+        $desktops = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'))
+        foreach ($desk in $desktops) {
+            if (-not [string]::IsNullOrWhiteSpace($desk)) {
+                $oldLnk = Join-Path $desk 'A7Pharma.lnk'
+                $newLnk = Join-Path $desk 'A7Pharma Retaguarda.lnk'
+                if (Test-Path -LiteralPath $oldLnk) {
+                    if (Test-Path -LiteralPath $newLnk) { Remove-Item -LiteralPath $newLnk -Force -ErrorAction SilentlyContinue }
+                    Rename-Item -LiteralPath $oldLnk -NewName 'A7Pharma Retaguarda.lnk' -Force
+                    Write-Host "[+] Atalho 'A7Pharma' renomeado para 'A7Pharma Retaguarda'." -ForegroundColor Green
+                }
+            }
+        }
+        $installationResults.Add('Atalhos e icones: criados')
+        Write-Host "`n=> Limpando arquivos temporarios..." -ForegroundColor Gray
     }
-    $installationResults.Add('Atalhos e icones: criados')
-    Write-Host "`n=> Limpando arquivos temporarios..." -ForegroundColor Gray
 }
 catch {
     $scriptFailed = $true
@@ -581,6 +588,7 @@ else {
     Write-Host '             IMPLANTACAO FINALIZADA' -ForegroundColor Green
     Write-Host '============================================================' -ForegroundColor Green
     Write-Host ("Computador : {0}" -f $env:COMPUTERNAME) -ForegroundColor Cyan
+    Write-Host ("Caixa PDV  : {0}" -f $caixaResumo) -ForegroundColor Cyan
     Write-Host ("IP IPv4    : {0}" -f (Get-IPv4ForSummary)) -ForegroundColor Cyan
     Write-Host ("Impressoras: {0}" -f $printerMode) -ForegroundColor Cyan
     Write-Host "`nResumo:" -ForegroundColor Yellow
